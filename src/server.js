@@ -145,7 +145,7 @@ app.post('/api/chat/upload', upload.single('image'), (req, res) => {
     }
     // Return the path relative to public
     // req.file.filename is the file name in uploads dir
-    const relativePath = `/ uploads / ${req.file.filename} `;
+    const relativePath = `/uploads/${req.file.filename}`;
     res.json({ success: true, path: relativePath });
 });
 
