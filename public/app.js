@@ -130,6 +130,8 @@ function showLoggedInView(user) {
     const userListItems = document.getElementById('userListItems');
 
     userListToggle.addEventListener('click', () => {
+        // Fetch latest list from server
+        socket.emit('request_user_list');
         userListModal.style.display = 'flex';
     });
 

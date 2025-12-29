@@ -427,6 +427,25 @@ io.on('connection', (socket) => {
             broadcastUserList();
         }
     });
+
+    // Request User List On-Demand
+    socket.on('request_user_list', async () => {
+        try {
+            const [users] = await promisePool.query('SELECT kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
+            const activeUserIds = new Set(onlineUsers.values());
+
+            const userList = users.map(u => ({
+                id: u.kakao_id,
+                nickname: u.nickname,
+                profile_image: u.profile_image,
+                isOnline: activeUserIds.has(u.kakao_id)
+            }));
+
+            socket.emit('update_user_list', userList);
+        } catch (err) {
+            console.error('Request User List Error:', err);
+        }
+    });
 });
 
 async function broadcastUserList() {
