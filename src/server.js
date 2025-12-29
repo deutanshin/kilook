@@ -1,13 +1,39 @@
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const express = require('express');
 const mysql = require('mysql2');
-
+const fs = require('fs');
+const multer = require('multer');
 const axios = require('axios');
-
 const http = require('http');
 const { Server } = require('socket.io');
 const cron = require('node-cron');
+
+// Ensure upload directory exists
+const uploadDir = path.join(__dirname, '../public/uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Multer Storage Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // file.originalname uses latin1 in some cases, verify encoding needed?
+        // simple unique filename: Date.now() + random + extension
+        const ext = path.extname(file.originalname);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + ext);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -39,27 +65,39 @@ const promisePool = pool.promise();
 async function initDB() {
     try {
         await promisePool.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                kakao_id BIGINT UNIQUE NOT NULL,
-                nickname VARCHAR(100),
-                profile_image VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )
-        `);
+            CREATE TABLE IF NOT EXISTS users(
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    kakao_id BIGINT UNIQUE NOT NULL,
+    nickname VARCHAR(100),
+    profile_image VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)
+    `);
 
-        // 채팅 메시지 테이블 (message type: text, image, etc. - 일단 text만)
+        // 채팅 메시지 테이블
         await promisePool.query(`
-            CREATE TABLE IF NOT EXISTS messages (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id BIGINT, 
-                nickname VARCHAR(100),
-                profile_image VARCHAR(255),
-                content TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+            CREATE TABLE IF NOT EXISTS messages(
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT,
+        nickname VARCHAR(100),
+        profile_image VARCHAR(255),
+        content TEXT,
+        type VARCHAR(20) DEFAULT 'text',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    `);
+
+        // Add 'type' column if it doesn't exist (Migration for existing DB)
+        try {
+            const [columns] = await promisePool.query("SHOW COLUMNS FROM messages LIKE 'type'");
+            if (columns.length === 0) {
+                await promisePool.query("ALTER TABLE messages ADD COLUMN type VARCHAR(20) DEFAULT 'text'");
+                console.log("Added 'type' column to messages table.");
+            }
+        } catch (e) {
+            console.error("Migration check error:", e);
+        }
 
         console.log('Database tables checked/created successfully.');
     } catch (err) {
@@ -85,8 +123,15 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Middleware
+app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.url}`);
+    next();
+});
+
 app.use(express.json());
 app.use(cookieParser());
+// Explicitly serve uploads folder to ensure access
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Health check endpoint
@@ -98,6 +143,17 @@ app.get('/health', async (req, res) => {
         console.error('Health check database error:', error);
         res.status(500).json({ status: 'error', database: 'disconnected', message: error.message });
     }
+});
+
+// Image Upload Endpoint
+app.post('/api/chat/upload', upload.single('image'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+    // Return the path relative to public
+    // req.file.filename is the file name in uploads dir
+    const relativePath = `/uploads/${req.file.filename}`;
+    res.json({ success: true, path: relativePath });
 });
 
 // Kakao Login Logic
@@ -198,17 +254,19 @@ app.get('/api/auth/me', (req, res) => {
     }
 });
 
-// Update Nickname
-app.put('/api/user/nickname', async (req, res) => {
+// Update Profile (Nickname + Image)
+app.post('/api/user/profile', upload.single('profileImage'), async (req, res) => {
     const token = req.cookies.token;
     const { nickname } = req.body;
+    // req.file might be undefined if not changing image
 
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     if (!nickname) return res.status(400).json({ error: 'Nickname is required' });
+    if (nickname.length > 9) return res.status(400).json({ error: '닉네임은 최대 9글자까지만 설정 가능합니다.' });
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.id; // kakao_id saved in token
+        const userId = decoded.id;
 
         // 0. Check for duplicate nickname
         const [existing] = await promisePool.query(
@@ -220,15 +278,26 @@ app.put('/api/user/nickname', async (req, res) => {
             return res.status(400).json({ success: false, error: '이미 존재하는 닉네임입니다.' });
         }
 
-        // 1. Update DB
-        await promisePool.query(
-            'UPDATE users SET nickname = ? WHERE kakao_id = ?',
-            [nickname, userId]
-        );
+        let updateQuery = 'UPDATE users SET nickname = ?';
+        let queryParams = [nickname];
 
-        // 2. Issue New Token with updated nickname
+        let newProfileImage = decoded.profileImage;
+
+        if (req.file) {
+            newProfileImage = `/uploads/${req.file.filename}`;
+            updateQuery += ', profile_image = ?';
+            queryParams.push(newProfileImage);
+        }
+
+        updateQuery += ' WHERE kakao_id = ?';
+        queryParams.push(userId);
+
+        // 1. Update DB
+        await promisePool.query(updateQuery, queryParams);
+
+        // 2. Issue New Token
         const newToken = jwt.sign(
-            { id: userId, nickname: nickname, profileImage: decoded.profileImage },
+            { id: userId, nickname: nickname, profileImage: newProfileImage },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -240,11 +309,11 @@ app.put('/api/user/nickname', async (req, res) => {
             maxAge: 24 * 60 * 60 * 1000
         });
 
-        res.json({ success: true, nickname: nickname });
+        res.json({ success: true, nickname: nickname, profileImage: newProfileImage });
 
     } catch (error) {
         console.error('Update Error:', error);
-        res.status(500).json({ error: 'Failed to update nickname' });
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
@@ -293,12 +362,12 @@ io.on('connection', (socket) => {
         try {
             // messages 테이블과 users 테이블을 조인하여 최신 닉네임/프사를 가져옴
             const [rows] = await promisePool.query(
-                `SELECT m.id, m.user_id, m.content, m.created_at, 
+                `SELECT m.id, m.user_id, m.content, m.type, m.created_at, 
                         COALESCE(u.nickname, m.nickname) as nickname, 
                         COALESCE(u.profile_image, m.profile_image) as profile_image
                  FROM messages m
                  LEFT JOIN users u ON m.user_id = u.kakao_id
-                 WHERE m.created_at >= NOW() - INTERVAL 7 DAY 
+                 WHERE m.created_at >= NOW() - INTERVAL 3 DAY 
                  ORDER BY m.created_at ASC`
             );
             socket.emit('load_messages', rows);
@@ -309,12 +378,14 @@ io.on('connection', (socket) => {
 
     // 메시지 전송
     socket.on('send_message', async (data) => {
-        // data: { user_id, nickname, profileImage, content }
+        // data: { user_id, nickname, profileImage, content, type }
+        // type = 'text' or 'image' (default: 'text')
+        const msgType = data.type || 'text';
         try {
             // DB 저장 (user_id = kakao_id 저장)
             const [result] = await promisePool.query(
-                `INSERT INTO messages (user_id, nickname, profile_image, content) VALUES (?, ?, ?, ?)`,
-                [data.user_id, data.nickname, data.profileImage, data.content]
+                `INSERT INTO messages (user_id, nickname, profile_image, content, type) VALUES (?, ?, ?, ?, ?)`,
+                [data.user_id, data.nickname, data.profileImage, data.content, msgType]
             );
 
             // 모든 클라이언트에 전송
@@ -324,6 +395,7 @@ io.on('connection', (socket) => {
                 nickname: data.nickname, // 표시용 닉네임 (당시 닉네임)
                 profile_image: data.profileImage,
                 content: data.content,
+                type: msgType,
                 created_at: new Date()
             };
             io.emit('receive_message', newMessage);
@@ -338,14 +410,31 @@ io.on('connection', (socket) => {
     });
 });
 
-// Cron Job: 매일 00:00에 7일 지난 메시지 삭제
+// Cron Job: 매일 00:00에 7일 지난 메시지 "및 파일" 삭제
 cron.schedule('0 0 * * *', async () => {
-    console.log('Running daily cron job: Deleting old messages...');
+    console.log('Running daily cron job: Clean up old messages and files...');
     try {
+        // 1. Find images to be deleted
+        const [rows] = await promisePool.query(
+            `SELECT content, type FROM messages WHERE created_at < NOW() - INTERVAL 3 DAY AND type = 'image'`
+        );
+
+        if (rows.length > 0) {
+            console.log(`Found ${rows.length} image files to delete.`);
+            rows.forEach((row) => {
+                const filePath = path.join(__dirname, '../public', row.content);
+                fs.unlink(filePath, (err) => {
+                    if (err) console.error(`Failed to delete file ${filePath}:`, err);
+                    else console.log(`Deleted file: ${filePath}`);
+                });
+            });
+        }
+
+        // 2. Delete DB records
         const [result] = await promisePool.query(
             `DELETE FROM messages WHERE created_at < NOW() - INTERVAL 7 DAY`
         );
-        console.log(`Deleted ${result.affectedRows} old messages.`);
+        console.log(`Deleted ${result.affectedRows} old messages from DB.`);
     } catch (err) {
         console.error('Cron job error:', err);
     }
