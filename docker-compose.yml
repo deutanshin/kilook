@@ -23,7 +23,8 @@ services:
       - /app/node_modules
     command: npm run dev # 개발 모드 (Nodemon) 실행
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
 
   db:
@@ -39,6 +40,11 @@ services:
       - "3307:3307" # 호스트 3307 <-> 컨테이너 3307
     volumes:
       - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "3307", "-u", "root", "--password=root_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: always
 
 volumes:
