@@ -123,15 +123,8 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Middleware
-app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.url}`);
-    next();
-});
-
 app.use(express.json());
 app.use(cookieParser());
-// Explicitly serve uploads folder to ensure access
-app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Health check endpoint
@@ -152,7 +145,7 @@ app.post('/api/chat/upload', upload.single('image'), (req, res) => {
     }
     // Return the path relative to public
     // req.file.filename is the file name in uploads dir
-    const relativePath = `/uploads/${req.file.filename}`;
+    const relativePath = `/ uploads / ${req.file.filename} `;
     res.json({ success: true, path: relativePath });
 });
 
@@ -254,11 +247,10 @@ app.get('/api/auth/me', (req, res) => {
     }
 });
 
-// Update Profile (Nickname + Image)
-app.post('/api/user/profile', upload.single('profileImage'), async (req, res) => {
+// Update Nickname
+app.put('/api/user/nickname', async (req, res) => {
     const token = req.cookies.token;
     const { nickname } = req.body;
-    // req.file might be undefined if not changing image
 
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     if (!nickname) return res.status(400).json({ error: 'Nickname is required' });
@@ -266,7 +258,7 @@ app.post('/api/user/profile', upload.single('profileImage'), async (req, res) =>
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.id;
+        const userId = decoded.id; // kakao_id saved in token
 
         // 0. Check for duplicate nickname
         const [existing] = await promisePool.query(
@@ -278,26 +270,15 @@ app.post('/api/user/profile', upload.single('profileImage'), async (req, res) =>
             return res.status(400).json({ success: false, error: '이미 존재하는 닉네임입니다.' });
         }
 
-        let updateQuery = 'UPDATE users SET nickname = ?';
-        let queryParams = [nickname];
-
-        let newProfileImage = decoded.profileImage;
-
-        if (req.file) {
-            newProfileImage = `/uploads/${req.file.filename}`;
-            updateQuery += ', profile_image = ?';
-            queryParams.push(newProfileImage);
-        }
-
-        updateQuery += ' WHERE kakao_id = ?';
-        queryParams.push(userId);
-
         // 1. Update DB
-        await promisePool.query(updateQuery, queryParams);
+        await promisePool.query(
+            'UPDATE users SET nickname = ? WHERE kakao_id = ?',
+            [nickname, userId]
+        );
 
-        // 2. Issue New Token
+        // 2. Issue New Token with updated nickname
         const newToken = jwt.sign(
-            { id: userId, nickname: nickname, profileImage: newProfileImage },
+            { id: userId, nickname: nickname, profileImage: decoded.profileImage },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -309,11 +290,11 @@ app.post('/api/user/profile', upload.single('profileImage'), async (req, res) =>
             maxAge: 24 * 60 * 60 * 1000
         });
 
-        res.json({ success: true, nickname: nickname, profileImage: newProfileImage });
+        res.json({ success: true, nickname: nickname });
 
     } catch (error) {
         console.error('Update Error:', error);
-        res.status(500).json({ error: 'Failed to update profile' });
+        res.status(500).json({ error: 'Failed to update nickname' });
     }
 });
 
@@ -367,7 +348,7 @@ io.on('connection', (socket) => {
                         COALESCE(u.profile_image, m.profile_image) as profile_image
                  FROM messages m
                  LEFT JOIN users u ON m.user_id = u.kakao_id
-                 WHERE m.created_at >= NOW() - INTERVAL 3 DAY 
+                 WHERE m.created_at >= NOW() - INTERVAL 7 DAY 
                  ORDER BY m.created_at ASC`
             );
             socket.emit('load_messages', rows);
@@ -416,7 +397,7 @@ cron.schedule('0 0 * * *', async () => {
     try {
         // 1. Find images to be deleted
         const [rows] = await promisePool.query(
-            `SELECT content, type FROM messages WHERE created_at < NOW() - INTERVAL 3 DAY AND type = 'image'`
+            `SELECT content, type FROM messages WHERE created_at < NOW() - INTERVAL 7 DAY AND type = 'image'`
         );
 
         if (rows.length > 0) {
