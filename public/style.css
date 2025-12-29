@@ -472,3 +472,25 @@ footer {
     height: 20px;
     fill: #0f172a;
 }
+
+/* Mobile Adjustments for Chat */
+@media (max-width: 480px) {
+    body {
+        overflow-y: auto;
+        /* Allow scrolling */
+        display: block;
+        /* Remove flex centering */
+    }
+
+    .container {
+        height: auto;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+
+    .chat-container {
+        height: 60vh;
+        /* Dynamic height */
+        min-height: 400px;
+    }
+}
