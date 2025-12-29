@@ -247,10 +247,11 @@ app.get('/api/auth/me', (req, res) => {
     }
 });
 
-// Update Nickname
-app.put('/api/user/nickname', async (req, res) => {
+// Update Profile (Nickname + Image)
+app.post('/api/user/profile', upload.single('profileImage'), async (req, res) => {
     const token = req.cookies.token;
     const { nickname } = req.body;
+    // req.file might be undefined if not changing image
 
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     if (!nickname) return res.status(400).json({ error: 'Nickname is required' });
@@ -258,7 +259,7 @@ app.put('/api/user/nickname', async (req, res) => {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.id; // kakao_id saved in token
+        const userId = decoded.id;
 
         // 0. Check for duplicate nickname
         const [existing] = await promisePool.query(
@@ -270,15 +271,26 @@ app.put('/api/user/nickname', async (req, res) => {
             return res.status(400).json({ success: false, error: '이미 존재하는 닉네임입니다.' });
         }
 
-        // 1. Update DB
-        await promisePool.query(
-            'UPDATE users SET nickname = ? WHERE kakao_id = ?',
-            [nickname, userId]
-        );
+        let updateQuery = 'UPDATE users SET nickname = ?';
+        let queryParams = [nickname];
 
-        // 2. Issue New Token with updated nickname
+        let newProfileImage = decoded.profileImage;
+
+        if (req.file) {
+            newProfileImage = `/uploads/${req.file.filename}`;
+            updateQuery += ', profile_image = ?';
+            queryParams.push(newProfileImage);
+        }
+
+        updateQuery += ' WHERE kakao_id = ?';
+        queryParams.push(userId);
+
+        // 1. Update DB
+        await promisePool.query(updateQuery, queryParams);
+
+        // 2. Issue New Token
         const newToken = jwt.sign(
-            { id: userId, nickname: nickname, profileImage: decoded.profileImage },
+            { id: userId, nickname: nickname, profileImage: newProfileImage },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -290,11 +302,11 @@ app.put('/api/user/nickname', async (req, res) => {
             maxAge: 24 * 60 * 60 * 1000
         });
 
-        res.json({ success: true, nickname: nickname });
+        res.json({ success: true, nickname: nickname, profileImage: newProfileImage });
 
     } catch (error) {
         console.error('Update Error:', error);
-        res.status(500).json({ error: 'Failed to update nickname' });
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
