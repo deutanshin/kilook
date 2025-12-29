@@ -49,13 +49,29 @@ async function checkLoginStatus() {
 
 function showLoggedInView(user) {
     const mainContainer = document.querySelector('.card');
+    const DEFAULT_PROFILE_IMG = 'https://k.kakaocdn.net/dn/dpk9l1/btqmGhA2lKL/Oz0wT9a5Szj5k4A95k4A95/img_640x640.jpg';
 
-    // Chat UI Structure (User Profile + Chat Area)
+    // --- UI Structure ---
     mainContainer.innerHTML = `
+        <div class="user-list-btn" id="userListToggle">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+            </svg>
+        </div>
+
         <div class="profile-area">
             <img src="${user.profileImage}" alt="Profile" class="profile-img">
             <h2 id="nicknameDisplay">${user.nickname}</h2>
             <div id="editArea" style="display:none; margin-top: 10px;">
+                <div class="profile-edit-container">
+                    <input type="file" id="profileInput" accept="image/*" style="display: none;">
+                    <div class="profile-img-wrapper" id="profileImgWrapper">
+                        <img src="${user.profileImage}" id="previewImg" onerror="this.src='${DEFAULT_PROFILE_IMG}'">
+                        <div class="edit-overlay">
+                            <span>변경</span>
+                        </div>
+                    </div>
+                </div>
                 <input type="text" id="nicknameInput" class="simple-input" value="${user.nickname}" maxlength="9">
                 <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: center;">
                     <button id="saveBtn" class="small-btn primary">저장</button>
@@ -65,11 +81,14 @@ function showLoggedInView(user) {
             <button id="editBtn" class="text-btn">내 정보 변경</button>
         </div>
 
+        <div id="typingIndicator" class="typing-indicator"></div>
+
         <!-- Chat Area -->
         <div class="chat-container">
             <div id="chatMessages" class="chat-messages">
                 <!-- Messages will appear here -->
             </div>
+            
             <div class="chat-input-area">
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
                 <button id="attachBtn" class="attach-btn">
@@ -89,9 +108,41 @@ function showLoggedInView(user) {
         <div class="button-group" style="margin-top: 2rem;">
             <button id="logoutBtn" class="secondary-btn">Logout</button>
         </div>
+
+        <!-- User List Modal -->
+        <div id="userListModal" class="user-list-modal">
+            <div class="user-list-content">
+                <div class="user-list-header">
+                    <h3>Members</h3>
+                    <button id="closeUserList" class="small-btn secondary">닫기</button>
+                </div>
+                <div id="userListItems" class="user-list-items">
+                    <!-- Users Rendered Here -->
+                </div>
+            </div>
+        </div>
     `;
 
-    // --- Logout & Profile Edit Logic (Keep Existing) ---
+    // --- User List Logic ---
+    const userListToggle = document.getElementById('userListToggle');
+    const userListModal = document.getElementById('userListModal');
+    const closeUserList = document.getElementById('closeUserList');
+    const userListItems = document.getElementById('userListItems');
+
+    userListToggle.addEventListener('click', () => {
+        userListModal.style.display = 'flex';
+    });
+
+    closeUserList.addEventListener('click', () => {
+        userListModal.style.display = 'none';
+    });
+
+    // Close on outside click
+    userListModal.addEventListener('click', (e) => {
+        if (e.target === userListModal) userListModal.style.display = 'none';
+    });
+
+    // --- Logout & Profile Edit Logic ---
     document.getElementById('logoutBtn').addEventListener('click', async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.reload();
@@ -101,6 +152,12 @@ function showLoggedInView(user) {
     const editArea = document.getElementById('editArea');
     const nicknameDisplay = document.getElementById('nicknameDisplay');
     const nicknameInput = document.getElementById('nicknameInput');
+
+    // Profile Image Edit Elements
+    const profileImgWrapper = document.getElementById('profileImgWrapper');
+    const profileInput = document.getElementById('profileInput');
+    const previewImg = document.getElementById('previewImg');
+    const mainProfileImg = document.querySelector('.profile-img'); // Main view image
 
     editBtn.addEventListener('click', () => {
         const isEditing = editArea.style.display !== 'none';
@@ -116,16 +173,42 @@ function showLoggedInView(user) {
         nicknameDisplay.style.display = 'block';
         editBtn.style.display = 'inline-block';
         nicknameInput.value = nicknameDisplay.innerText;
+        // Reset preview
+        previewImg.src = user.profileImage;
+    });
+
+    // Handle Profile Image Selection
+    profileImgWrapper.addEventListener('click', () => {
+        profileInput.click();
+    });
+
+    profileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
     });
 
     document.getElementById('saveBtn').addEventListener('click', async () => {
         const newNickname = nicknameInput.value.trim();
+        const newProfileFile = profileInput.files[0];
+
         if (!newNickname) return alert('닉네임을 입력해주세요.');
+
+        const formData = new FormData();
+        formData.append('nickname', newNickname);
+        if (newProfileFile) {
+            formData.append('profileImage', newProfileFile);
+        }
+
         try {
-            const res = await fetch('/api/user/nickname', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nickname: newNickname })
+            const res = await fetch('/api/user/profile', {
+                method: 'POST',
+                body: formData
             });
             const data = await res.json();
             if (data.success) {
@@ -133,9 +216,15 @@ function showLoggedInView(user) {
                 editArea.style.display = 'none';
                 nicknameDisplay.style.display = 'block';
                 editBtn.style.display = 'inline-block';
-                // user 객체 업데이트 (채팅용)
+
+                // Update local user object
                 user.nickname = data.nickname;
-                alert('닉네임이 변경되었습니다.');
+                user.profileImage = data.profileImage;
+
+                // Update Main Profile Image
+                mainProfileImg.src = data.profileImage;
+
+                alert('프로필이 변경되었습니다.');
             } else {
                 alert('변경 실패: ' + data.error);
             }
@@ -147,15 +236,14 @@ function showLoggedInView(user) {
 
     // --- Chat Logic ---
     const socket = io(); // Initialize Socket.IO
-    socket.emit('join_chat'); // Request recent messages
+    socket.emit('join_chat', user); // Pass User Info
 
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
     const attachBtn = document.getElementById('attachBtn');
     const fileInput = document.getElementById('fileInput');
-
-    const DEFAULT_PROFILE_IMG = 'https://k.kakaocdn.net/dn/dpk9l1/btqmGhA2lKL/Oz0wT9a5Szj5k4A95k4A95/img_640x640.jpg';
+    const typingIndicator = document.getElementById('typingIndicator');
 
     // UI Helper: Add Message
     function addMessageToUI(msg) {
@@ -208,7 +296,57 @@ function showLoggedInView(user) {
     // Receive New Message
     socket.on('receive_message', (msg) => {
         addMessageToUI(msg);
+        // If someone sends a message, they stopped typing
+        if (msg.nickname !== user.nickname) {
+            typingIndicator.classList.remove('active');
+        }
     });
+
+    // Update User List
+    socket.on('update_user_list', (users) => {
+        userListItems.innerHTML = '';
+        users.forEach(u => {
+            const el = document.createElement('div');
+            el.className = 'user-item';
+            const pImg = u.profile_image || DEFAULT_PROFILE_IMG;
+
+            el.innerHTML = `
+                <img src="${pImg}" class="user-item-img" onerror="this.src='${DEFAULT_PROFILE_IMG}'">
+                <div class="user-item-info">
+                    <div style="font-weight: bold; color: var(--text-primary);">${u.nickname}</div>
+                </div>
+                <div class="status-indicator ${u.isOnline ? 'online' : ''}"></div>
+            `;
+            userListItems.appendChild(el);
+        });
+    });
+
+    // Typing Handlers
+    socket.on('display_typing', (nickname) => {
+        typingIndicator.innerText = `${nickname} 님이 입력 중...`;
+        typingIndicator.classList.add('active');
+    });
+
+    socket.on('hide_typing', () => {
+        typingIndicator.classList.remove('active');
+    });
+
+    // Typing Emit Logic (Throttle)
+    let typingTimeout = null;
+    chatInput.addEventListener('input', () => {
+        if (chatInput.value.length > 0) {
+            socket.emit('typing', user.nickname);
+
+            if (typingTimeout) clearTimeout(typingTimeout);
+
+            typingTimeout = setTimeout(() => {
+                socket.emit('stop_typing');
+            }, 3000);
+        } else {
+            socket.emit('stop_typing');
+        }
+    });
+
 
     // Send Message Logic
     function sendMessage() {
@@ -222,6 +360,8 @@ function showLoggedInView(user) {
             content: content,
             type: 'text'
         });
+
+        socket.emit('stop_typing'); // Stop typing status explicitly
 
         chatInput.value = '';
         chatInput.focus();

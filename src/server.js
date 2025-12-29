@@ -335,45 +335,56 @@ app.use((err, req, res, next) => {
 });
 
 // Socket.IO Logic
-io.on('connection', (socket) => {
-    console.log('A user connected');
+const onlineUsers = new Map(); // socketId -> userId
+const userIdToInfo = new Map(); // userId -> { nickname, profileImage }
 
-    // 입장 시 최근 7일치 대화 내용 불러오기
-    socket.on('join_chat', async () => {
+io.on('connection', (socket) => {
+    console.log('A user connected:', socket.id);
+
+    // 입장 시
+    socket.on('join_chat', async (user) => {
+        // user: { id, nickname, profileImage }
+        if (user && user.id) {
+            socket.userId = user.id; // Store in socket session
+            onlineUsers.set(socket.id, user.id);
+            userIdToInfo.set(user.id, { nickname: user.nickname, profile_image: user.profileImage });
+        }
+
         try {
-            // messages 테이블과 users 테이블을 조인하여 최신 닉네임/프사를 가져옴
+            // 1. Load Recent Messages
             const [rows] = await promisePool.query(
                 `SELECT m.id, m.user_id, m.content, m.type, m.created_at, 
                         COALESCE(u.nickname, m.nickname) as nickname, 
                         COALESCE(u.profile_image, m.profile_image) as profile_image
                  FROM messages m
                  LEFT JOIN users u ON m.user_id = u.kakao_id
-                 WHERE m.created_at >= NOW() - INTERVAL 7 DAY 
+                 WHERE m.created_at >= NOW() - INTERVAL 3 DAY 
                  ORDER BY m.created_at ASC`
             );
             socket.emit('load_messages', rows);
+
+            // 2. Broadcast User List & Online Status
+            broadcastUserList();
+
         } catch (err) {
-            console.error('Load messages error:', err);
+            console.error('Load error:', err);
         }
     });
 
     // 메시지 전송
     socket.on('send_message', async (data) => {
-        // data: { user_id, nickname, profileImage, content, type }
-        // type = 'text' or 'image' (default: 'text')
+        // ... (Existing logic) ...
         const msgType = data.type || 'text';
         try {
-            // DB 저장 (user_id = kakao_id 저장)
             const [result] = await promisePool.query(
                 `INSERT INTO messages (user_id, nickname, profile_image, content, type) VALUES (?, ?, ?, ?, ?)`,
                 [data.user_id, data.nickname, data.profileImage, data.content, msgType]
             );
 
-            // 모든 클라이언트에 전송
             const newMessage = {
                 id: result.insertId,
-                user_id: data.user_id, // 중요: 소유자 판별용 ID
-                nickname: data.nickname, // 표시용 닉네임 (당시 닉네임)
+                user_id: data.user_id,
+                nickname: data.nickname,
                 profile_image: data.profileImage,
                 content: data.content,
                 type: msgType,
@@ -386,10 +397,47 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Typing Indicator
+    socket.on('typing', (nickname) => {
+        socket.broadcast.emit('display_typing', nickname);
+    });
+
+    socket.on('stop_typing', () => {
+        socket.broadcast.emit('hide_typing');
+    });
+
     socket.on('disconnect', () => {
-        console.log('User disconnected');
+        console.log('User disconnected:', socket.id);
+        if (socket.userId) {
+            onlineUsers.delete(socket.id);
+            // Optionally remove from userIdToInfo if no other sockets exist for this user, 
+            // but for "Registered List" we want to keep them.
+            broadcastUserList();
+        }
     });
 });
+
+async function broadcastUserList() {
+    try {
+        // Get all registered users from DB
+        const [users] = await promisePool.query('SELECT kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
+
+        // Check online status
+        // Create a Set of currently active userIds
+        const activeUserIds = new Set(onlineUsers.values());
+
+        const userList = users.map(u => ({
+            id: u.kakao_id,
+            nickname: u.nickname,
+            profile_image: u.profile_image,
+            isOnline: activeUserIds.has(u.kakao_id)
+        }));
+
+        io.emit('update_user_list', userList);
+    } catch (err) {
+        console.error('Broadcast User List Error:', err);
+    }
+}
 
 // Cron Job: 매일 00:00에 7일 지난 메시지 "및 파일" 삭제
 cron.schedule('0 0 * * *', async () => {
