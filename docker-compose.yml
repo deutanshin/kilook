@@ -1,0 +1,45 @@
+
+
+services:
+  app:
+    build: .
+    container_name: ktv-app
+    ports:
+      - "13579:13579"
+    environment:
+      - PORT=13579
+      - DB_HOST=db
+      - DB_USER=ktv_user
+      - DB_PASSWORD=ktv_password
+      - DB_NAME=ktv_db
+      - DB_PORT=3307
+      - KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID}
+      - REDIRECT_URI=${REDIRECT_URI}
+      - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
+      - INVITE_CODE=${INVITE_CODE}
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    command: npm run dev # 개발 모드 (Nodemon) 실행
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: mysql:8.0
+    container_name: ktv-db
+    command: --port=3307
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=ktv_db
+      - MYSQL_USER=ktv_user
+      - MYSQL_PASSWORD=ktv_password
+    ports:
+      - "3307:3307" # 호스트 3307 <-> 컨테이너 3307
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+
+volumes:
+  db_data:
