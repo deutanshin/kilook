@@ -22,11 +22,43 @@
             <div class="card">
                 <h2>Hi</h2>
                 <p>I'm Kimen.</p>
-                <div class="login-wrapper">
+                <div class="login-wrapper" id="userLoginWrapper">
                     <input type="password" id="inviteCode" class="invite-input" placeholder="초대코드 입력">
                     <button id="kakaoLoginBtn" class="kakao-btn">
                         <span>카카오로 시작하기</span>
                     </button>
+                </div>
+
+                <!-- Admin Auth Wrapper (Hidden by default) -->
+                <div class="admin-form-container" id="adminAuthWrapper">
+                    <div class="auth-tabs">
+                        <button class="auth-tab active" id="tabLogin">Login</button>
+                        <button class="auth-tab" id="tabSignup">Signup</button>
+                    </div>
+
+                    <!-- Admin Login Form -->
+                    <form id="adminLoginForm" class="auth-form active">
+                        <div class="admin-input-group">
+                            <input type="text" id="adminLoginId" class="invite-input" placeholder="ID" required>
+                            <input type="password" id="adminLoginPw" class="invite-input" placeholder="Password"
+                                required>
+                        </div>
+                        <button type="submit" class="full-btn">관리자 로그인</button>
+                    </form>
+
+                    <!-- Admin Signup Form -->
+                    <form id="adminSignupForm" class="auth-form">
+                        <div class="admin-input-group">
+                            <input type="text" id="adminSignupId" class="invite-input" placeholder="ID" required>
+                            <input type="password" id="adminSignupPw" class="invite-input" placeholder="Password"
+                                required>
+                            <input type="text" id="adminSignupNick" class="invite-input" placeholder="Nickname" required
+                                maxlength="9">
+                            <input type="password" id="adminSignupCode" class="invite-input" placeholder="Admin Code"
+                                required>
+                        </div>
+                        <button type="submit" class="full-btn">관리자 가입</button>
+                    </form>
                 </div>
             </div>
         </main>

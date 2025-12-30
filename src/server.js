@@ -1,4 +1,3 @@
-
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const express = require('express');
@@ -9,6 +8,7 @@ const axios = require('axios');
 const http = require('http');
 const { Server } = require('socket.io');
 const cron = require('node-cron');
+const bcrypt = require('bcryptjs');
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, '../public/uploads');
@@ -64,16 +64,49 @@ const promisePool = pool.promise();
 // Initialize DB schema
 async function initDB() {
     try {
+        // We need to modify the table if it exists to allow NULL kakao_id
         await promisePool.query(`
-            CREATE TABLE IF NOT EXISTS users(
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    kakao_id BIGINT UNIQUE NOT NULL,
-    nickname VARCHAR(100),
-    profile_image VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-)
-    `);
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                kakao_id BIGINT UNIQUE NULL,
+                username VARCHAR(50) UNIQUE,
+                password VARCHAR(255),
+                nickname VARCHAR(100),
+                profile_image VARCHAR(255),
+                role VARCHAR(20) DEFAULT 'user',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Migration: Modify kakao_id to be NULLable if it's NOT NULL
+        try {
+            await promisePool.query("ALTER TABLE users MODIFY COLUMN kakao_id BIGINT NULL");
+        } catch (e) {
+            // Check if error is simply because it's already nullable or other safe ignore
+            // console.log("Migration (kakao_id):", e.message); 
+        }
+
+        // Migration: Add username/password columns if not exist
+        try {
+            const [columns] = await promisePool.query("SHOW COLUMNS FROM users LIKE 'username'");
+            if (columns.length === 0) {
+                await promisePool.query("ALTER TABLE users ADD COLUMN username VARCHAR(50) UNIQUE");
+                await promisePool.query("ALTER TABLE users ADD COLUMN password VARCHAR(255)");
+                console.log("Added 'username' and 'password' columns to users table.");
+            }
+        } catch (e) { console.error("Migration (username/password):", e); }
+
+        // Add 'role' column if it doesn't exist (Migration for existing DB)
+        try {
+            const [columns] = await promisePool.query("SHOW COLUMNS FROM users LIKE 'role'");
+            if (columns.length === 0) {
+                await promisePool.query("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'");
+                console.log("Added 'role' column to users table.");
+            }
+        } catch (e) {
+            console.error("Migration check error (role):", e);
+        }
 
         // 채팅 메시지 테이블
         await promisePool.query(`
@@ -195,29 +228,33 @@ app.get('/api/auth/kakao/callback', async (req, res) => {
         const nickname = kakaoUser.properties?.nickname || 'Unknown';
         const profileImage = kakaoUser.properties?.profile_image || '';
 
-        // 3. Upsert User (Update only profile image and login time, KEEP nickname)
+        // Determine Role from cookie, default to 'user'
+        const authRole = req.cookies.auth_role || 'user';
+
+        // 3. Upsert User (Update profile image, role, and login time, KEEP nickname)
         // 닉네임은 최초 가입 시에만 Kakao 닉네임 사용, 이후엔 DB 값 유지
         await promisePool.query(
-            `INSERT INTO users (kakao_id, nickname, profile_image) 
-             VALUES (?, ?, ?) 
+            `INSERT INTO users (kakao_id, nickname, profile_image, role) 
+             VALUES (?, ?, ?, ?) 
              ON DUPLICATE KEY UPDATE 
              profile_image = VALUES(profile_image),
+             role = VALUES(role),
              last_login = NOW()`,
-            [kakaoId, nickname, profileImage]
+            [kakaoId, nickname, profileImage, authRole]
         );
 
-        // 4. Retrieve Latest User Info using Kakao ID (to get the custom nickname)
+        // 4. Retrieve Latest User Info using Kakao ID (to get the custom nickname and role)
         const [rows] = await promisePool.query('SELECT * FROM users WHERE kakao_id = ?', [kakaoId]);
         const user = rows[0];
 
-        // 5. Issue JWT Token (Use DB nickname, not Kakao's)
+        // 5. Issue JWT Token (Use DB nickname and role, not Kakao's)
         const token = jwt.sign(
-            { id: user.kakao_id, nickname: user.nickname, profileImage: user.profile_image }, // Use user.nickname from DB
+            { id: user.kakao_id, nickname: user.nickname, profileImage: user.profile_image, role: user.role }, // Use user.nickname and user.role from DB
             JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        // 5. Set Cookie
+        // 6. Set Cookie
         res.cookie('token', token, {
             httpOnly: true,
             secure: false, // Localhost development
@@ -310,24 +347,119 @@ app.post('/api/user/profile', upload.single('profileImage'), async (req, res) =>
     }
 });
 
-// Verify Invite Code
+// Verify Invite Code & Admin Code
 app.post('/api/auth/verify-code', (req, res) => {
     const { code } = req.body;
-    const correctCode = process.env.INVITE_CODE;
+    const inviteCode = process.env.INVITE_CODE;
+    const adminCode = process.env.ADMIN_CODE;
 
-    console.log(`[VERIFY] Env Code: '${correctCode}', Input: '${code}'`);
+    if (!code) return res.status(400).json({ success: false, error: 'Code required' });
 
-    if (code && code.trim() === correctCode.trim()) {
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ success: false, error: 'Invalid code' });
+    if (adminCode && code.trim() === adminCode.trim()) {
+        res.cookie('auth_role', 'admin', { httpOnly: true, maxAge: 10 * 60 * 1000 }); // 10 min
+        return res.json({ success: true, role: 'admin' });
     }
+
+    if (code.trim() === inviteCode.trim()) {
+        res.cookie('auth_role', 'user', { httpOnly: true, maxAge: 10 * 60 * 1000 });
+        return res.json({ success: true, role: 'user' });
+    }
+
+    res.status(400).json({ success: false, error: 'Invalid code' });
 });
 
 // Logout
 app.post('/api/auth/logout', (req, res) => {
     res.clearCookie('token');
+    res.clearCookie('auth_role');
     res.json({ success: true });
+});
+
+// --- Admin Local Auth Endpoints ---
+
+// Admin Signup
+app.post('/api/auth/admin/signup', async (req, res) => {
+    const { username, password, nickname, adminCode } = req.body;
+    const envAdminCode = process.env.ADMIN_CODE;
+
+    if (!username || !password || !nickname || !adminCode) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (adminCode.trim() !== envAdminCode.trim()) {
+        return res.status(403).json({ error: 'Invalid Admin Code' });
+    }
+
+    try {
+        // Check duplicate username
+        const [existing] = await promisePool.query('SELECT id FROM users WHERE username = ?', [username]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert Admin User
+        await promisePool.query(
+            `INSERT INTO users (username, password, nickname, role, kakao_id) VALUES (?, ?, ?, 'admin', NULL)`,
+            [username, hashedPassword, nickname]
+        );
+
+        res.json({ success: true, message: 'Admin registered successfully' });
+
+    } catch (err) {
+        console.error('Admin Signup Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Admin Login
+app.post('/api/auth/admin/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    try {
+        const [rows] = await promisePool.query('SELECT * FROM users WHERE username = ?', [username]);
+        if (rows.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const user = rows[0];
+        const match = await bcrypt.compare(password, user.password);
+
+        if (!match) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Issue Token
+        const token = jwt.sign(
+            { id: user.id, nickname: user.nickname, profileImage: user.profile_image || null, role: 'admin' },
+            JWT_SECRET, // Note: user.id is INT. Previous kakao flow used kakao_id (BIGINT). 
+            // We should ensure socket.js handles user.id (which is INT now for admins). 
+            // Actually, in `join_chat`, we used `socket.userId = user.id`. 
+            // In kakao flow, `id` in token was `kakao_id`. 
+            // For admin, `id` in token is auto-increment `id`.
+            // Messages table uses `user_id BIGINT`.
+            // This might cause confusion if admins and users chat. 
+            // Kakao IDs are huge numbers. Local IDs are small. They won't overlap likely, but technically user_id field mixes them.
+            { expiresIn: '24h' }
+        );
+
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: false,
+            maxAge: 24 * 60 * 60 * 1000
+        });
+
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error('Admin Login Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 // 기본 라우트 (SPA 지원을 위해 API가 아닌 요청은 index.html 반환)

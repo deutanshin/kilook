@@ -633,17 +633,73 @@ footer {
     }
 
     .container {
-        height: auto;
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-
-    .chat-container {
-        height: 60vh;
-        /* Dynamic height */
-        min-height: 400px;
+        .chat-container {
+            height: 60vh;
+            /* Dynamic height */
+            min-height: 400px;
+        }
     }
 }
+
+/* Admin Form Styles */
+.admin-form-container {
+    display: none;
+    /* Hidden by default */
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+}
+
+.auth-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.auth-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    padding-bottom: 5px;
+    border-bottom: 2px solid transparent;
+}
+
+.auth-tab.active {
+    color: var(--accent-color);
+    border-bottom: 2px solid var(--accent-color);
+    font-weight: bold;
+}
+
+.admin-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-form {
+    display: none;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.auth-form.active {
+    display: flex;
+}
+
+.full-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-color);
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
 /* Profile Edit Styles */
 .profile-edit-container {
     display: flex;
@@ -692,4 +748,3 @@ footer {
     font-size: 0.9rem;
     font-weight: 500;
 }
-

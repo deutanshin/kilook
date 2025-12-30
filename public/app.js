@@ -5,11 +5,125 @@ document.addEventListener('DOMContentLoaded', () => {
     // 앱 시작 시 로그인 상태 체크
     checkLoginStatus();
 
+    const headerTitle = document.querySelector('header h1');
+    const userLoginWrapper = document.getElementById('userLoginWrapper');
+    const adminAuthWrapper = document.getElementById('adminAuthWrapper');
+
+    // Admin Mode Logic
+    let clickCount = 0;
+    let clickTimer = null;
+    let isAdminMode = false;
+
+    if (headerTitle) {
+        headerTitle.addEventListener('click', () => {
+            clickCount++;
+
+            if (clickTimer) clearTimeout(clickTimer);
+            clickTimer = setTimeout(() => {
+                clickCount = 0;
+            }, 3000); // 3 seconds to click 5 times
+
+            if (clickCount >= 5) {
+                isAdminMode = !isAdminMode; // Toggle
+                clickCount = 0;
+
+                if (isAdminMode) {
+                    alert('관리자 모드가 활성화되었습니다.');
+                    userLoginWrapper.style.display = 'none';
+                    adminAuthWrapper.style.display = 'flex';
+                    headerTitle.style.color = "#ff4444";
+                } else {
+                    alert('관리자 모드가 해제되었습니다.');
+                    userLoginWrapper.style.display = 'flex';
+                    adminAuthWrapper.style.display = 'none';
+                    headerTitle.style.color = "";
+                }
+            }
+        });
+    }
+
+    // --- Admin Tabs & Forms ---
+    const tabLogin = document.getElementById('tabLogin');
+    const tabSignup = document.getElementById('tabSignup');
+    const adminLoginForm = document.getElementById('adminLoginForm');
+    const adminSignupForm = document.getElementById('adminSignupForm');
+
+    if (tabLogin && tabSignup) {
+        tabLogin.addEventListener('click', () => {
+            tabLogin.classList.add('active');
+            tabSignup.classList.remove('active');
+            adminLoginForm.classList.add('active');
+            adminSignupForm.classList.remove('active');
+        });
+
+        tabSignup.addEventListener('click', () => {
+            tabSignup.classList.add('active');
+            tabLogin.classList.remove('active');
+            adminSignupForm.classList.add('active');
+            adminLoginForm.classList.remove('active');
+        });
+    }
+
+    // Admin Signup
+    if (adminSignupForm) {
+        adminSignupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('adminSignupId').value;
+            const password = document.getElementById('adminSignupPw').value;
+            const nickname = document.getElementById('adminSignupNick').value;
+            const adminCode = document.getElementById('adminSignupCode').value;
+
+            try {
+                const res = await fetch('/api/auth/admin/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, nickname, adminCode })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('관리자 가입 성공! 로그인해주세요.');
+                    tabLogin.click(); // Switch to login tab
+                } else {
+                    alert(data.error || '가입 실패');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('오류 발생');
+            }
+        });
+    }
+
+    // Admin Login
+    if (adminLoginForm) {
+        adminLoginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('adminLoginId').value;
+            const password = document.getElementById('adminLoginPw').value;
+
+            try {
+                const res = await fetch('/api/auth/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.reload(); // Reload to trigger checkLoginStatus
+                } else {
+                    alert(data.error || '로그인 실패');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('오류 발생');
+            }
+        });
+    }
+
     if (kakaoLoginBtn) {
         kakaoLoginBtn.addEventListener('click', async () => {
             const code = inviteInput.value.trim();
             if (!code) {
-                alert('초대코드를 입력해주세요.');
+                alert('코드를 입력해주세요.');
                 return;
             }
 
@@ -22,9 +136,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
 
                 if (data.success) {
-                    window.location.href = '/api/auth/kakao';
+                    if (data.role === 'admin') {
+                        // Admin Login Success
+                        window.location.href = '/api/auth/kakao';
+                    } else {
+                        // User Login Success
+                        window.location.href = '/api/auth/kakao';
+                    }
                 } else {
-                    alert('초대코드가 올바르지 않습니다.');
+                    alert('코드가 올바르지 않습니다.');
                 }
             } catch (err) {
                 console.error('Verify Error:', err);
