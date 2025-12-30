@@ -502,6 +502,9 @@ let ladderResults = []; // Bottom texts
 let ladderData = []; // The generated horizontal lines
 let ladderResetTimer = null;
 
+// Screen Sharing Broadcast State
+const activeBroadcasts = new Map(); // userId -> { socketId, userId, nickname, quality, hasAudio, profileImage }
+
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
@@ -763,6 +766,139 @@ io.on('connection', (socket) => {
             results: ladderResults
         });
     }
+
+    // ============================================
+    // 🖥️ SCREEN SHARING SIGNALING (WebRTC)
+    // ============================================
+
+    // Send current broadcast list to new connection
+    socket.emit('broadcast_list', {
+        broadcasts: Array.from(activeBroadcasts.values())
+    });
+
+    // Start broadcast
+    socket.on('start_broadcast', async ({ userId, nickname, quality, hasAudio }) => {
+        console.log(`${nickname} started broadcasting with audio:`, hasAudio);
+
+        // Get user profile image  
+        let profileImage = null;
+        try {
+            const [rows] = await promisePool.query(
+                'SELECT profile_image FROM users WHERE id = ?',
+                [userId]
+            );
+            if (rows.length > 0) {
+                profileImage = rows[0].profile_image;
+            }
+        } catch (err) {
+            console.error('Error fetching profile image:', err);
+        }
+
+        const broadcast = {
+            socketId: socket.id,
+            userId,
+            nickname,
+            quality,
+            hasAudio: !!hasAudio,
+            profileImage
+        };
+
+        activeBroadcasts.set(userId, broadcast);
+        console.log(`Broadcast added. Total: ${activeBroadcasts.size}`);
+
+        // Notify all other users
+        socket.broadcast.emit('broadcast_started', {
+            broadcasterId: userId,
+            broadcasterName: nickname,
+            quality,
+            hasAudio: !!hasAudio,
+            profileImage
+        });
+
+        // Send updated list to everyone
+        io.emit('broadcast_list', {
+            broadcasts: Array.from(activeBroadcasts.values())
+        });
+    });
+
+    // Stop broadcast
+    socket.on('stop_broadcast', () => {
+        // Find and remove broadcaster
+        for (const [userId, broadcast] of activeBroadcasts.entries()) {
+            if (broadcast.socketId === socket.id) {
+                console.log(`${broadcast.nickname} stopped broadcasting`);
+                activeBroadcasts.delete(userId);
+
+                // Notify everyone
+                io.emit('broadcast_stopped', { broadcasterId: userId });
+
+                // Send updated list
+                io.emit('broadcast_list', {
+                    broadcasts: Array.from(activeBroadcasts.values())
+                });
+                break;
+            }
+        }
+    });
+
+    // Check if there's an active broadcast
+    socket.on('check_broadcast', () => {
+        // Send full broadcast list
+        socket.emit('broadcast_list', {
+            broadcasts: Array.from(activeBroadcasts.values())
+        });
+    });
+
+    // Viewer wants to join broadcast
+    socket.on('join_broadcast', ({ broadcasterId, viewerId, viewerName }) => {
+        // Find the specific broadcaster by ID
+        const broadcast = activeBroadcasts.get(broadcasterId);
+
+        if (broadcast) {
+            console.log(`${viewerName} joined ${broadcast.nickname}'s broadcast (ID: ${broadcasterId})`);
+            // Tell broadcaster about new viewer
+            io.to(broadcast.socketId).emit('viewer_joined', {
+                viewerId: socket.id,
+                viewerName
+            });
+        } else {
+            console.log(`Broadcast not found for ID: ${broadcasterId}`);
+        }
+    });
+
+    // Viewer leaves broadcast
+    socket.on('leave_broadcast', () => {
+        // Notify all broadcasters
+        activeBroadcasts.forEach(broadcast => {
+            io.to(broadcast.socketId).emit('viewer_left', {
+                viewerId: socket.id
+            });
+        });
+    });
+
+    // WebRTC Offer (broadcaster → viewer)
+    socket.on('broadcast_offer', ({ target, offer }) => {
+        io.to(target).emit('broadcast_offer', {
+            from: socket.id,
+            offer
+        });
+    });
+
+    // WebRTC Answer (viewer → broadcaster)
+    socket.on('broadcast_answer', ({ target, answer }) => {
+        io.to(target).emit('broadcast_answer', {
+            from: socket.id,
+            answer
+        });
+    });
+
+    // ICE Candidate exchange
+    socket.on('ice_candidate', ({ target, candidate }) => {
+        io.to(target).emit('ice_candidate', {
+            from: socket.id,
+            candidate
+        });
+    });
 });
 
 async function broadcastUserList() {

@@ -1,0 +1,51 @@
+// 서버 시작 부분에 추가할 `start_broadcast` 핸들러 업데이트 코드
+// 기존 코드(770-794줄)를 다음으로 교체:
+
+// Send current broadcast list to new connection
+socket.emit('broadcast_list', {
+    broadcasts: Array.from(activeBroadcasts.values())
+});
+
+// Start broadcast
+socket.on('start_broadcast', async ({ userId, nickname, quality, hasAudio }) => {
+    console.log(`${nickname} started broadcasting`);
+    
+    // Get user profile image
+    let profileImage = null;
+    try {
+        const [rows] = await promisePool.query(
+            'SELECT profile_image FROM users WHERE id = ?',
+            [userId]
+        );
+        if (rows.length > 0) {
+            profileImage = rows[0].profile_image;
+        }
+    } catch (err) {
+        console.error('Error fetching profile image:', err);
+    }
+
+    const broadcast = {
+        socketId: socket.id,
+        userId,
+        nickname,
+        quality,
+        hasAudio: !!hasAudio,
+        profileImage
+    };
+
+    activeBroadcasts.set(userId, broadcast);
+
+    // Notify all other users about new broadcast
+    socket.broadcast.emit('broadcast_started', {
+        broadcasterId: userId,
+        broadcasterName: nickname,
+        quality,
+        hasAudio: !!hasAudio,
+        profileImage
+    });
+
+    // Send updated list to everyone
+    io.emit('broadcast_list', {
+        broadcasts: Array.from(activeBroadcasts.values())
+    });
+});

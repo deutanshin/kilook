@@ -200,6 +200,9 @@ function showLoggedInView(user) {
                 <div class="nav-item active" id="navChat">
                     <span>💬</span> Chat
                 </div>
+                <div class="nav-item" id="navWatching">
+                    <span>🖥️</span> Watching
+                </div>
                 <div class="nav-item" id="navLadder">
                     <span>🪜</span> Ladder
                 </div>
@@ -276,6 +279,127 @@ function showLoggedInView(user) {
                 <!-- Game Area -->
                 <div id="ladderGameArea" style="width: 100%; height: 400px; background: rgba(0,0,0,0.2); border-radius: 12px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; display: none;">
                      <canvas id="ladderCanvas" width="800" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- Screen Sharing Section -->
+            <div id="watchingSection" class="chat-container" style="display: none; flex-direction: row; padding: 0; gap: 0;">
+                
+                <!-- Left Panel: Broadcast List -->
+                <div style="width: 320px; background: rgba(0,0,0,0.3); border-right: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column;">
+                    <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 8px;">
+                            🎬 Live Broadcasts
+                        </h3>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px;">
+                            진행 중인 방송
+                        </div>
+                    </div>
+
+                    <!-- Broadcast List -->
+                    <div id="broadcastList" style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Broadcasts will be added here -->
+                        <div id="noBroadcast" style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+                            <div style="font-size: 3rem; margin-bottom: 15px; opacity: 0.3;">📡</div>
+                            <div style="font-size: 0.95rem;">진행 중인 방송이 없습니다</div>
+                            <div style="font-size: 0.8rem; margin-top: 8px; opacity: 0.7;">화면 공유를 시작해보세요!</div>
+                        </div>
+                    </div>
+
+                    <!-- Start Broadcast Button -->
+                    <div style="padding: 15px; border-top: 1px solid rgba(255,255,255,0.05);">
+                        <button id="startShareBtn" class="full-btn primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px;">
+                            <span>📺</span> 내 화면 공유하기
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Video Player -->
+                <div style="flex: 1; display: flex; flex-direction: column; padding: 20px; background: var(--card-bg);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2 style="margin: 0; font-size: 1.3rem;">🖥️ Screen Sharing</h2>
+                        
+                        <!-- Control Buttons -->
+                        <div style="display: flex; gap: 10px;">
+                            <button id="stopShareBtn" class="small-btn secondary" style="display: none; align-items: center; gap: 8px;">
+                                <span>⏹️</span> 공유 중지
+                            </button>
+                            <button id="fullscreenBtn" class="small-btn secondary" style="display: none; align-items: center; gap: 8px;">
+                                <span>⛶</span> 전체화면
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Status Info -->
+                    <div id="shareStatus" style="text-align: center; margin-bottom: 15px; color: var(--text-secondary); font-size: 0.9rem;">
+                        왼쪽 목록에서 방송을 선택하거나 직접 공유를 시작하세요
+                    </div>
+
+                    <!-- Viewer Count -->
+                    <div id="viewerCount" style="text-align: center; margin-bottom: 15px; display: none;">
+                        <span style="background: rgba(var(--accent-rgb), 0.2); padding: 8px 16px; border-radius: 20px; color: var(--accent-color); font-weight: 600;">
+                            👥 시청자: <span id="viewerNumber">0</span>명
+                        </span>
+                    </div>
+
+                    <!-- Video Container -->
+                    <div id="videoContainer" style="position: relative; width: 100%; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3); flex: 1;">
+                        <!-- Main Video -->
+                        <video 
+                            id="sharedScreen" 
+                            autoplay 
+                            playsinline
+                            style="width: 100%; height: 100%; display: block; background: #000; cursor: pointer; object-fit: contain;"
+                        ></video>
+                        
+                        <!-- No Stream Placeholder -->
+                        <div id="noStreamPlaceholder" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(41, 50, 65, 0.95), rgba(72, 52, 212, 0.1)); pointer-events: none;">
+                            <div style="font-size: 4rem; margin-bottom: 20px; opacity: 0.5;">🖥️</div>
+                            <div style="color: var(--text-secondary); font-size: 1.1rem;">공유된 화면이 없습니다</div>
+                            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 8px;">방송을 선택하거나 직접 시작하세요</div>
+                        </div>
+
+                        <!-- Broadcaster Indicator -->
+                        <div id="broadcasterInfo" style="position: absolute; top: 15px; left: 15px; background: rgba(220, 38, 38, 0.9); backdrop-filter: blur(10px); color: white; padding: 8px 16px; border-radius: 20px; font-weight: 600; display: none; align-items: center; gap: 8px; pointer-events: none;">
+                            <span style="width: 8px; height: 8px; background: white; border-radius: 50%; animation: pulse 2s infinite;"></span>
+                            <span id="broadcasterName">방송 중</span>
+                        </div>
+
+                        <!-- Quality Indicator -->
+                        <div id="qualityIndicator" style="position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); color: white; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; display: none; pointer-events: none;">
+                            <span id="qualityText">FHD 1080p</span>
+                        </div>
+
+                        <!-- Fullscreen Hint -->
+                        <div id="fullscreenHint" style="position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; display: none; pointer-events: none; white-space: nowrap;">
+                            💡 더블클릭으로 전체화면
+                        </div>
+
+                        <!-- Volume Control -->
+                        <div id="volumeControl" style="position: absolute; bottom: 15px; right: 15px; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); padding: 10px 15px; border-radius: 8px; display: none; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.2rem;">🔊</span>
+                            <input type="range" id="volumeSlider" min="0" max="100" value="100" 
+                                   style="width: 100px; cursor: pointer;">
+                        </div>
+                    </div>
+
+                    <!-- Connection Info -->
+                    <div id="connectionInfo" style="margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 0.85rem; color: var(--text-secondary); display: none;">
+                        <div style="display: flex; justify-content: space-around; text-align: center;">
+                            <div>
+                                <div style="color: var(--text-primary); font-weight: 600;">연결 상태</div>
+                                <div id="connState">대기중</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-primary); font-weight: 600;">화질</div>
+                                <div id="resolution">-</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-primary); font-weight: 600;">오디오</div>
+                                <div id="audioState">-</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -519,25 +643,38 @@ function showLoggedInView(user) {
 
     // --- Tab Switching Logic ---
     const navChat = document.getElementById('navChat');
+    const navWatching = document.getElementById('navWatching');
     const navLadder = document.getElementById('navLadder');
     const chatSection = document.getElementById('chatSection');
+    const watchingSection = document.getElementById('watchingSection');
     const ladderSection = document.getElementById('ladderSection');
 
     function switchTab(tabName) {
+        // Remove active class from all
+        navChat.classList.remove('active');
+        navWatching.classList.remove('active');
+        navLadder.classList.remove('active');
+
+        // Hide all sections
+        chatSection.style.display = 'none';
+        watchingSection.style.display = 'none';
+        ladderSection.style.display = 'none';
+
+        // Show selected tab
         if (tabName === 'chat') {
             navChat.classList.add('active');
-            navLadder.classList.remove('active');
             chatSection.style.display = 'flex';
-            ladderSection.style.display = 'none';
-        } else {
-            navChat.classList.remove('active');
+        } else if (tabName === 'watching') {
+            navWatching.classList.add('active');
+            watchingSection.style.display = 'flex';
+        } else if (tabName === 'ladder') {
             navLadder.classList.add('active');
-            chatSection.style.display = 'none';
             ladderSection.style.display = 'flex';
         }
     }
 
     navChat.addEventListener('click', () => switchTab('chat'));
+    navWatching.addEventListener('click', () => switchTab('watching'));
     navLadder.addEventListener('click', () => switchTab('ladder'));
 
     // --- Ladder Game Logic ---
@@ -1108,5 +1245,740 @@ function showLoggedInView(user) {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-}
 
+    // ===================================
+    // 🖥️ SCREEN SHARING LOGIC (WebRTC)
+    // ===================================
+
+    const startShareBtn = document.getElementById('startShareBtn');
+    const stopShareBtn = document.getElementById('stopShareBtn');
+    const sharedScreen = document.getElementById('sharedScreen');
+    const noStreamPlaceholder = document.getElementById('noStreamPlaceholder');
+    const shareStatus = document.getElementById('shareStatus');
+    const broadcasterInfo = document.getElementById('broadcasterInfo');
+    const broadcasterName = document.getElementById('broadcasterName');
+    const viewerCount = document.getElementById('viewerCount');
+    const viewerNumber = document.getElementById('viewerNumber');
+    const qualityIndicator = document.getElementById('qualityIndicator');
+    const volumeControl = document.getElementById('volumeControl');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const connectionInfo = document.getElementById('connectionInfo');
+    const connState = document.getElementById('connState');
+    const resolution = document.getElementById('resolution');
+    const audioState = document.getElementById('audioState');
+    const broadcastList = document.getElementById('broadcastList');
+    const noBroadcast = document.getElementById('noBroadcast');
+
+    // WebRTC State
+    let localStream = null;
+    let peerConnections = {}; // socketId -> RTCPeerConnection (for broadcaster)
+    let viewerPeerConnection = null; // RTCPeerConnection (for viewer)
+    let isBroadcasting = false;
+    let viewers = new Set();
+    let activeBroadcasts = new Map(); // Map of broadcasterId -> broadcast info
+    let currentBroadcaster = null; // Current broadcast being watched
+
+    // ICE Servers (STUN for NAT traversal)
+    const iceServers = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+    };
+
+    // ===================================
+    // 📋 BROADCAST LIST MANAGEMENT
+    // ===================================
+
+    function updateBroadcastList() {
+        // Clear existing broadcasts
+        broadcastList.innerHTML = '';
+
+        if (activeBroadcasts.size === 0) {
+            broadcastList.appendChild(noBroadcast);
+            return;
+        }
+
+        // Add each broadcast
+        activeBroadcasts.forEach((broadcast, broadcasterId) => {
+            const card = document.createElement('div');
+            card.style.cssText = `
+                background: rgba(255,255,255,0.05);
+                border-radius: 12px;
+                padding: 12px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border: 2px solid transparent;
+            `;
+
+            card.innerHTML = `
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="position: relative;">
+                        <img src="${broadcast.profileImage || DEFAULT_PROFILE_IMG}" 
+                             style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-color);"
+                             onerror="this.onerror=null; this.src='${DEFAULT_PROFILE_IMG}'">
+                        <div style="position: absolute; bottom: -2px; right: -2px; width: 14px; height: 14px; background: #ef4444; border: 2px solid var(--card-bg); border-radius: 50%; animation: pulse 2s infinite;"></div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 4px;">
+                            ${broadcast.nickname}
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-secondary);">
+                            <span style="background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 0.7rem;">
+                                🔴 LIVE
+                            </span>
+                            <span>${broadcast.quality || 'FHD'}</span>
+                            ${broadcast.hasAudio ? '<span>🔊</span>' : '<span style="opacity:0.5">🔇</span>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Hover effect
+            card.addEventListener('mouseenter', () => {
+                card.style.borderColor = 'var(--accent-color)';
+                card.style.background = 'rgba(56, 189, 248, 0.1)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.borderColor = 'transparent';
+                card.style.background = 'rgba(255,255,255,0.05)';
+            });
+
+            // Click to watch
+            card.addEventListener('click', () => {
+                if (isBroadcasting && broadcasterId === user.id) {
+                    alert('❌ 자신의 방송은 시청할 수 없습니다!');
+                    return;
+                }
+
+                // If already broadcasting, ask to stop
+                if (isBroadcasting) {
+                    const confirmed = confirm(
+                        '⚠️ 현재 방송 중입니다.\n\n' +
+                        `${broadcast.nickname}님의 방송을 보려면 내 방송을 중지해야 합니다.\n\n` +
+                        '방송을 중지하고 시청하시겠습니까?'
+                    );
+
+                    if (!confirmed) return;
+
+                    // Stop broadcasting
+                    stopScreenShare();
+                }
+
+                watchBroadcast(broadcast);
+            });
+
+            broadcastList.appendChild(card);
+        });
+    }
+
+    function watchBroadcast(broadcast) {
+        console.log('Watching broadcast:', broadcast);
+
+        // Save current broadcaster
+        currentBroadcaster = {
+            id: broadcast.userId,
+            name: broadcast.nickname
+        };
+
+        // Update UI
+        shareStatus.textContent = `${broadcast.nickname}님의 방송 연결 중...`;
+        shareStatus.style.color = 'var(--accent-color)';
+        broadcasterInfo.style.display = 'flex';
+        document.getElementById('broadcasterName').textContent = broadcast.nickname;
+
+        // Join as viewer
+        socket.emit('join_broadcast', {
+            broadcasterId: broadcast.userId,
+            viewerId: user.id,
+            viewerName: user.nickname
+        });
+    }
+
+
+    // Start Screen Sharing
+    startShareBtn.addEventListener('click', async () => {
+        try {
+            // If currently viewing someone's broadcast, stop viewing
+            if (currentBroadcaster) {
+                const confirmed = confirm(
+                    '⚠️ 현재 시청 중입니다.\n\n' +
+                    `${currentBroadcaster.name}님의 방송 시청을 중지하고 내 방송을 시작하시겠습니까?`
+                );
+
+                if (!confirmed) return;
+
+                // Leave viewer mode
+                leaveAsViewer();
+            }
+
+            // Show audio sharing guide before starting
+            const userConfirmed = confirm(
+                '🔊 오디오 공유 안내\n\n' +
+                '소리도 함께 공유하려면:\n' +
+                '1. "Chrome 탭" 선택 (전체 화면 ❌)\n' +
+                '2. "탭 오디오 공유" 체크 ✅\n\n' +
+                '계속하시겠습니까?'
+            );
+
+            if (!userConfirmed) return;
+
+            // Request screen capture with FHD quality + audio
+            localStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: 'always',
+                    displaySurface: 'monitor',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30, max: 60 }
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 48000
+                }
+            });
+
+            // Show local preview
+            sharedScreen.srcObject = localStream;
+            sharedScreen.muted = true; // Don't hear our own audio
+            noStreamPlaceholder.style.display = 'none';
+
+            // Get track info
+            const videoTrack = localStream.getVideoTracks()[0];
+            const audioTrack = localStream.getAudioTracks()[0];
+            const settings = videoTrack.getSettings();
+
+            // Check if audio is included
+            if (!audioTrack) {
+                // Show warning if no audio
+                setTimeout(() => {
+                    const retry = confirm(
+                        '⚠️ 오디오가 포함되지 않았습니다!\n\n' +
+                        '유튜브 소리를 공유하려면:\n' +
+                        '1. 공유 중지\n' +
+                        '2. 다시 시작\n' +
+                        '3. "Chrome 탭" 선택\n' +
+                        '4. "탭 오디오 공유" 체크\n\n' +
+                        '영상만 공유하려면 "취소"를 누르세요.'
+                    );
+
+                    if (retry) {
+                        stopScreenShare();
+                        startShareBtn.click();
+                    }
+                }, 1000);
+            }
+
+            // Update UI
+            startShareBtn.style.display = 'none';
+            stopShareBtn.style.display = 'flex';
+            shareStatus.textContent = audioTrack
+                ? '🔴 화면 + 오디오 공유 중!'
+                : '🔴 화면 공유 중 (오디오 없음)';
+            shareStatus.style.color = 'var(--accent-color)';
+            broadcasterInfo.style.display = 'flex';
+            broadcasterName.textContent = `${user.nickname} (나)`;
+            viewerCount.style.display = 'block';
+            qualityIndicator.style.display = 'block';
+            connectionInfo.style.display = 'block';
+            connState.textContent = '방송 중';
+            connState.style.color = '#22c55e';
+
+            // Display quality info
+            resolution.textContent = `${settings.width}x${settings.height}`;
+            audioState.textContent = audioTrack ? '활성' : '없음';
+            audioState.style.color = audioTrack ? '#22c55e' : '#ef4444';
+
+            isBroadcasting = true;
+
+            // Notify server that we're broadcasting
+            socket.emit('start_broadcast', {
+                userId: user.id,
+                nickname: user.nickname,
+                quality: `${settings.width}x${settings.height}`,
+                hasAudio: !!audioTrack
+            });
+
+            // Handle screen share stop (user clicks browser "Stop sharing")
+            videoTrack.onended = () => {
+                stopScreenShare();
+            };
+
+        } catch (error) {
+            console.error('Screen share error:', error);
+            if (error.name === 'NotAllowedError') {
+                alert('❌ 화면 공유 권한이 거부되었습니다.\n\n다시 시도해주세요.');
+            } else if (error.name === 'NotFoundError') {
+                alert('❌ 공유할 화면을 찾을 수 없습니다.');
+            } else if (error.name === 'NotSupportedError') {
+                alert('❌ 이 브라우저는 화면 공유를 지원하지 않습니다.\n\nChrome 또는 Edge를 사용해주세요.');
+            } else {
+                alert('❌ 화면 공유 시작 오류:\n' + error.message);
+            }
+        }
+    });
+
+    // Stop Screen Sharing
+    stopShareBtn.addEventListener('click', () => {
+        stopScreenShare();
+    });
+
+    function stopScreenShare() {
+        console.log('=== Stopping screen share ===');
+
+        // Stop local stream tracks
+        if (localStream) {
+            console.log('Stopping local stream tracks');
+            localStream.getTracks().forEach(track => {
+                track.stop();
+                console.log(`Stopped track: ${track.kind}`);
+            });
+            localStream = null;
+        }
+
+        // Close all peer connections
+        console.log(`Closing ${Object.keys(peerConnections).length} peer connections`);
+        Object.values(peerConnections).forEach(pc => {
+            if (pc) pc.close();
+        });
+        peerConnections = {};
+        viewers.clear();
+
+        // Reset UI
+        sharedScreen.srcObject = null;
+        noStreamPlaceholder.style.display = 'flex';
+        startShareBtn.style.display = 'flex';
+        stopShareBtn.style.display = 'none';
+        shareStatus.textContent = '왼쪽 목록에서 방송을 선택하거나 직접 공유를 시작하세요';
+        shareStatus.style.color = 'var(--text-secondary)';
+        broadcasterInfo.style.display = 'none';
+        viewerCount.style.display = 'none';
+        qualityIndicator.style.display = 'none';
+        volumeControl.style.display = 'none';
+        connectionInfo.style.display = 'none';
+        fullscreenBtn.style.display = 'none';
+        viewerNumber.textContent = '0';
+
+        isBroadcasting = false;
+
+        // Notify server
+        socket.emit('stop_broadcast');
+
+        console.log('Screen share stopped successfully');
+    }
+
+    // Leave viewer mode (stop watching)
+    function leaveAsViewer() {
+        console.log('=== Leaving viewer mode ===');
+
+        // Close viewer peer connection
+        if (viewerPeerConnection) {
+            console.log('Closing viewer peer connection');
+            viewerPeerConnection.close();
+            viewerPeerConnection = null;
+        }
+
+        // Clear broadcaster info
+        currentBroadcaster = null;
+
+        // Reset UI
+        sharedScreen.srcObject = null;
+        noStreamPlaceholder.style.display = 'flex';
+        shareStatus.textContent = '왼쪽 목록에서 방송을 선택하거나 직접 공유를 시작하세요';
+        shareStatus.style.color = 'var(--text-secondary)';
+        broadcasterInfo.style.display = 'none';
+        qualityIndicator.style.display = 'none';
+        volumeControl.style.display = 'none';
+        fullscreenBtn.style.display = 'none';
+        connectionInfo.style.display = 'none';
+
+        // Notify server
+        socket.emit('leave_broadcast');
+
+        console.log('Viewer mode left successfully');
+    }
+
+    // Socket Events for Screen Sharing
+
+    // Viewer requests to watch
+    socket.on('viewer_joined', async ({ viewerId, viewerName }) => {
+        console.log('=== viewer_joined event received ===');
+        console.log(`Viewer: ${viewerName} (ID: ${viewerId})`);
+
+        if (!isBroadcasting || !localStream) {
+            console.error('❌ Not broadcasting or no localStream, ignoring viewer');
+            return;
+        }
+
+        // 1. Clean up existing connection if any (Crucial for reconnects)
+        if (peerConnections[viewerId]) {
+            console.warn(`⚠️ Existing peer connection found for ${viewerName}, closing it.`);
+            peerConnections[viewerId].close();
+            delete peerConnections[viewerId];
+            viewers.delete(viewerId);
+        }
+
+        viewers.add(viewerId);
+        viewerNumber.textContent = viewers.size;
+        console.log(`✅ Adding viewer. Total viewers: ${viewers.size}`);
+
+        try {
+            // 2. Create New PeerConnection
+            const pc = new RTCPeerConnection(iceServers);
+            peerConnections[viewerId] = pc;
+            console.log(`✅ Created PeerConnection for viewer ${viewerName}`);
+
+            // 3. Add Tracks
+            localStream.getTracks().forEach(track => {
+                try {
+                    pc.addTrack(track, localStream);
+                    console.log(`  - Added ${track.kind} track`);
+                } catch (err) {
+                    console.error(`Error adding track: ${err}`);
+                }
+            });
+
+            // 4. ICE Candidate Handling
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log(`Sending ICE candidate to ${viewerName}`);
+                    socket.emit('ice_candidate', {
+                        target: viewerId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // 5. Connection State Monitoring
+            pc.onconnectionstatechange = () => {
+                const state = pc.connectionState;
+                console.log(`Connection state with ${viewerName}: ${state}`);
+                if (state === 'disconnected' || state === 'failed') {
+                    console.log(`Viewer ${viewerName} disconnected/failed`);
+                    viewers.delete(viewerId);
+                    viewerNumber.textContent = viewers.size;
+
+                    if (peerConnections[viewerId]) {
+                        peerConnections[viewerId].close();
+                        delete peerConnections[viewerId];
+                    }
+                }
+            };
+
+            // 6. Create Offer with specific options
+            console.log(`Creating offer for ${viewerName}...`);
+            const offer = await pc.createOffer({
+                offerToReceiveAudio: false,
+                offerToReceiveVideo: false
+            });
+
+            await pc.setLocalDescription(offer);
+            console.log(`✅ Offer created & set local description`);
+
+            socket.emit('broadcast_offer', {
+                target: viewerId,
+                offer: offer
+            });
+            console.log(`✅ broadcast_offer sent to ${viewerName}`);
+
+        } catch (error) {
+            console.error('❌ Critical error in viewer_joined:', error);
+            // Rollback viewer count on error
+            viewers.delete(viewerId);
+            viewerNumber.textContent = viewers.size;
+            if (peerConnections[viewerId]) {
+                peerConnections[viewerId].close();
+                delete peerConnections[viewerId];
+            }
+        }
+    });
+
+    // Receive answer from viewer
+    socket.on('broadcast_answer', async ({ from, answer }) => {
+        const pc = peerConnections[from];
+        if (pc) {
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            } catch (error) {
+                console.error('Error setting remote description:', error);
+            }
+        }
+    });
+
+    // Receive ICE candidate
+    socket.on('ice_candidate', async ({ from, candidate }) => {
+        const pc = peerConnections[from];
+        if (pc) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        }
+    });
+
+    // Viewer disconnected
+    socket.on('viewer_left', ({ viewerId }) => {
+        viewers.delete(viewerId);
+        viewerNumber.textContent = viewers.size;
+        if (peerConnections[viewerId]) {
+            peerConnections[viewerId].close();
+            delete peerConnections[viewerId];
+        }
+    });
+
+    // ==== VIEWER SIDE ====
+
+    // Broadcast started notification
+    socket.on('broadcast_started', ({ broadcasterId, broadcasterName, quality, hasAudio, profileImage }) => {
+        console.log(`Broadcast started by ${broadcasterName}`);
+
+        // Just update the broadcast list - don't auto-join
+        // User will manually click to watch from the list
+    });
+
+    // Broadcast list updated
+    socket.on('broadcast_list', ({ broadcasts }) => {
+        console.log('Broadcast list updated:', broadcasts);
+
+        // Update activeBroadcasts map
+        activeBroadcasts.clear();
+        broadcasts.forEach(broadcast => {
+            activeBroadcasts.set(broadcast.userId, broadcast);
+        });
+
+        // Update UI
+        updateBroadcastList();
+    });
+
+    // Broadcast stopped notification
+    socket.on('broadcast_stopped', ({ broadcasterId }) => {
+        console.log('Broadcast stopped:', broadcasterId);
+
+        // Remove from list
+        activeBroadcasts.delete(broadcasterId);
+        updateBroadcastList();
+
+        // If we were watching this broadcast, leave
+        if (currentBroadcaster && currentBroadcaster.id === broadcasterId) {
+            leaveAsViewer();
+        }
+    });
+
+    // Receive offer from broadcaster
+    socket.on('broadcast_offer', async ({ from, offer }) => {
+        if (!viewerPeerConnection) {
+            viewerPeerConnection = new RTCPeerConnection(iceServers);
+
+            // Handle incoming stream
+            viewerPeerConnection.ontrack = async (event) => {
+                console.log('Received remote stream');
+                const stream = event.streams[0];
+                sharedScreen.srcObject = stream;
+                sharedScreen.muted = false; // Hear broadcaster audio
+                noStreamPlaceholder.style.display = 'none';
+
+                // Try ensuring playback
+                try {
+                    await sharedScreen.play();
+                } catch (e) {
+                    console.warn("Autoplay error, user interaction might be needed:", e);
+                }
+
+                // Show fullscreen button
+                fullscreenBtn.style.display = 'flex';
+
+                // Update specific UI elements
+                connectionInfo.style.display = 'block';
+                connState.textContent = '연결됨';
+                connState.style.color = '#22c55e';
+
+                // Update main status based on connection
+                if (currentBroadcaster) {
+                    shareStatus.textContent = `${currentBroadcaster.name}님의 방송이 연결되었습니다!`;
+                    shareStatus.style.color = '#22c55e'; // Green color for success
+
+                    // Hide signal text after 3 seconds
+                    setTimeout(() => {
+                        if (shareStatus.textContent.includes('연결되었습니다')) {
+                            shareStatus.textContent = '화면 + 오디오 공유 중!';
+                            shareStatus.classList.add('pulse');
+                        }
+                    }, 3000);
+                }
+
+                // Update resolution info
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    const settings = videoTrack.getSettings();
+                    if (settings.width && settings.height) {
+                        resolution.textContent = `${settings.width}x${settings.height}`;
+                    } else {
+                        resolution.textContent = 'Auto';
+                    }
+                }
+
+                const audioTrack = stream.getAudioTracks()[0];
+                audioState.textContent = audioTrack ? '활성' : '없음';
+                audioState.style.color = audioTrack ? '#22c55e' : '#f59e0b';
+            };
+
+            // ICE Candidate handling
+            viewerPeerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', {
+                        target: from,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Connection state monitoring
+            viewerPeerConnection.onconnectionstatechange = () => {
+                console.log(`Connection state: ${viewerPeerConnection.connectionState}`);
+                connState.textContent = viewerPeerConnection.connectionState;
+
+                if (viewerPeerConnection.connectionState === 'connected') {
+                    connState.style.color = '#22c55e';
+                } else if (viewerPeerConnection.connectionState === 'failed') {
+                    connState.style.color = '#ef4444';
+                }
+            };
+        }
+
+        try {
+            await viewerPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await viewerPeerConnection.createAnswer();
+            await viewerPeerConnection.setLocalDescription(answer);
+
+            socket.emit('broadcast_answer', {
+                target: from,
+                answer: answer
+            });
+        } catch (error) {
+            console.error('Error answering offer:', error);
+        }
+    });
+
+    function joinAsViewer() {
+        if (isBroadcasting) return; // Can't view if you're broadcasting
+
+        socket.emit('join_broadcast', {
+            viewerId: user.id,
+            viewerName: user.nickname
+        });
+    }
+
+    function leaveAsViewer() {
+        if (viewerPeerConnection) {
+            viewerPeerConnection.close();
+            viewerPeerConnection = null;
+        }
+
+        currentBroadcaster = null;
+        sharedScreen.srcObject = null;
+        noStreamPlaceholder.style.display = 'flex';
+        shareStatus.textContent = '화면 공유를 시작하려면 위 버튼을 클릭하세요';
+        shareStatus.style.color = 'var(--text-secondary)';
+        broadcasterInfo.style.display = 'none';
+        qualityIndicator.style.display = 'none';
+        volumeControl.style.display = 'none';
+        connectionInfo.style.display = 'none';
+
+        socket.emit('leave_broadcast');
+    }
+
+    // Volume control
+    volumeSlider.addEventListener('input', (e) => {
+        sharedScreen.volume = e.target.value / 100;
+    });
+
+    // ===================================
+    // 📺 FULLSCREEN FUNCTIONALITY
+    // ===================================
+
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const videoContainer = document.getElementById('videoContainer');
+    const fullscreenHint = document.getElementById('fullscreenHint');
+    let isFullscreen = false;
+    let hintTimeout = null;
+
+    // Toggle fullscreen function
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            // Enter fullscreen
+            if (videoContainer.requestFullscreen) {
+                videoContainer.requestFullscreen();
+            } else if (videoContainer.webkitRequestFullscreen) {
+                videoContainer.webkitRequestFullscreen();
+            } else if (videoContainer.msRequestFullscreen) {
+                videoContainer.msRequestFullscreen();
+            }
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    }
+
+    // Fullscreen button click
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+    // Double-click video to toggle fullscreen
+    sharedScreen.addEventListener('dblclick', toggleFullscreen);
+
+    // Fullscreen change event
+    document.addEventListener('fullscreenchange', () => {
+        isFullscreen = !!document.fullscreenElement;
+        fullscreenBtn.querySelector('span').textContent = isFullscreen ? '⛶' : '⛶';
+        fullscreenBtn.querySelector('span').nextSibling.textContent = isFullscreen ? ' 전체화면 종료' : ' 전체화면';
+    });
+
+    // Show hint on video hover (only when streaming)
+    let hintShown = false;
+    sharedScreen.addEventListener('mouseenter', () => {
+        if (sharedScreen.srcObject && !hintShown && !isFullscreen) {
+            fullscreenHint.style.display = 'block';
+            hintTimeout = setTimeout(() => {
+                fullscreenHint.style.display = 'none';
+                hintShown = true; // Show only once per session
+            }, 3000);
+        }
+    });
+
+    sharedScreen.addEventListener('mouseleave', () => {
+        if (hintTimeout) {
+            clearTimeout(hintTimeout);
+        }
+    });
+
+    // ===================================
+
+    // Check for existing broadcast when entering watching tab
+    navWatching.addEventListener('click', () => {
+        if (!isBroadcasting) {
+            socket.emit('check_broadcast');
+        }
+    });
+
+    socket.on('broadcast_status', ({ isActive, broadcasterId, broadcasterName, quality }) => {
+        if (isActive && !isBroadcasting) {
+            currentBroadcaster = { id: broadcasterId, name: broadcasterName };
+            shareStatus.textContent = `${broadcasterName}님이 화면을 공유 중입니다`;
+            shareStatus.style.color = 'var(--accent-color)';
+            broadcasterInfo.style.display = 'flex';
+            broadcasterName.textContent = broadcasterName;
+            qualityIndicator.style.display = 'block';
+            volumeControl.style.display = 'flex';
+            fullscreenBtn.style.display = 'flex'; // Show fullscreen button
+            joinAsViewer();
+        }
+    });
+}

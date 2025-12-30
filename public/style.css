@@ -849,3 +849,18 @@ footer {
     font-size: 0.9rem;
     font-weight: 500;
 }
+
+/* Pulse Animation for Broadcasting Indicator */
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
