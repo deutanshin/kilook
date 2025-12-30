@@ -563,15 +563,21 @@ io.on('connection', (socket) => {
     // Request User List On-Demand
     socket.on('request_user_list', async () => {
         try {
-            const [users] = await promisePool.query('SELECT kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
+            // Select both id and kakao_id to handle both user types
+            const [users] = await promisePool.query('SELECT id, kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
             const activeUserIds = new Set(onlineUsers.values());
 
-            const userList = users.map(u => ({
-                id: u.kakao_id,
-                nickname: u.nickname,
-                profile_image: u.profile_image,
-                isOnline: activeUserIds.has(u.kakao_id)
-            }));
+            const userList = users.map(u => {
+                // Determine the ID used for online checking
+                // Kakao users use kakao_id, Admins use id
+                const uniqueId = u.kakao_id ? u.kakao_id : u.id;
+                return {
+                    id: uniqueId,
+                    nickname: u.nickname,
+                    profile_image: u.profile_image,
+                    isOnline: activeUserIds.has(uniqueId)
+                };
+            });
 
             socket.emit('update_user_list', userList);
         } catch (err) {
@@ -583,18 +589,21 @@ io.on('connection', (socket) => {
 async function broadcastUserList() {
     try {
         // Get all registered users from DB
-        const [users] = await promisePool.query('SELECT kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
+        const [users] = await promisePool.query('SELECT id, kakao_id, nickname, profile_image FROM users ORDER BY nickname ASC');
 
         // Check online status
         // Create a Set of currently active userIds
         const activeUserIds = new Set(onlineUsers.values());
 
-        const userList = users.map(u => ({
-            id: u.kakao_id,
-            nickname: u.nickname,
-            profile_image: u.profile_image,
-            isOnline: activeUserIds.has(u.kakao_id)
-        }));
+        const userList = users.map(u => {
+            const uniqueId = u.kakao_id ? u.kakao_id : u.id;
+            return {
+                id: uniqueId,
+                nickname: u.nickname,
+                profile_image: u.profile_image,
+                isOnline: activeUserIds.has(uniqueId)
+            };
+        });
 
         io.emit('update_user_list', userList);
     } catch (err) {
