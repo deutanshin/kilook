@@ -1777,14 +1777,34 @@ function showLoggedInView(user) {
                 console.log('Received remote stream');
                 const stream = event.streams[0];
                 sharedScreen.srcObject = stream;
-                sharedScreen.muted = false; // Hear broadcaster audio
                 noStreamPlaceholder.style.display = 'none';
 
-                // Try ensuring playback
+                // Autoplay Policy Handling:
+                // 1. Start playback MUTED (allowed by browsers)
+                sharedScreen.muted = true;
+
                 try {
                     await sharedScreen.play();
+                    console.log('✅ Video playing (muted)');
+
+                    // 2. Once playing, try to UNMUTE
+                    sharedScreen.muted = false;
+                    console.log('✅ Audio unmuted successfully');
                 } catch (e) {
-                    console.warn("Autoplay error, user interaction might be needed:", e);
+                    console.warn("⚠️ Autoplay with sound failed. Starting muted.", e);
+                    // Fallback: Stay muted if unmuting fails, or keep trying to play
+                    sharedScreen.muted = true;
+                    try {
+                        await sharedScreen.play();
+                    } catch (e2) {
+                        console.error("❌ Muted autoplay also failed:", e2);
+                        shareStatus.textContent = '화면을 클릭하여 재생하세요 ▶';
+                        shareStatus.style.cursor = 'pointer';
+                        shareStatus.onclick = () => {
+                            sharedScreen.play();
+                            sharedScreen.muted = false;
+                        };
+                    }
                 }
 
                 // Show fullscreen button
