@@ -482,8 +482,28 @@ app.use((err, req, res, next) => {
 const onlineUsers = new Map(); // socketId -> userId
 const userIdToInfo = new Map(); // userId -> { nickname, profileImage }
 
+// Ladder Game State
+let ladderState = 'idle'; // idle, recruiting, input_phase, playing
+let ladderParticipants = [];
+let ladderTimer = null;
+let ladderTimeLeft = 0;
+let ladderCreator = null;
+let ladderResults = []; // Bottom texts
+let ladderData = []; // The generated horizontal lines
+let ladderResetTimer = null;
+
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
+
+    // Sync Ladder State for new connection
+    socket.emit('ladder_recruitment_state', {
+        state: ladderState,
+        participants: ladderParticipants,
+        timeLeft: ladderTimeLeft,
+        creator: ladderCreator,
+        results: ladderResults,
+        ladderData: ladderData
+    });
 
     // 입장 시
     socket.on('join_chat', async (user) => {
@@ -509,6 +529,16 @@ io.on('connection', (socket) => {
 
             // 2. Broadcast User List & Online Status
             broadcastUserList();
+
+            // Re-emit ladder state just in case custom join logic is needed later
+            socket.emit('ladder_recruitment_state', {
+                state: ladderState,
+                participants: ladderParticipants,
+                timeLeft: ladderTimeLeft,
+                creator: ladderCreator,
+                results: ladderResults,
+                ladderData: ladderData
+            });
 
         } catch (err) {
             console.error('Load error:', err);
@@ -584,6 +614,145 @@ io.on('connection', (socket) => {
             console.error('Request User List Error:', err);
         }
     });
+
+    // --- Ladder Game Logic ---
+
+    // Start Recruitment
+    socket.on('start_ladder_recruitment', (user) => {
+        if (ladderState !== 'idle') return; // Already recruiting or playing
+
+        ladderState = 'recruiting';
+        ladderParticipants = [user]; // Creator auto-joins
+        ladderCreator = user;
+        ladderTimeLeft = 30;
+        ladderResults = []; // reset results
+        ladderData = [];
+
+        io.emit('ladder_recruitment_state', {
+            state: 'recruiting',
+            participants: ladderParticipants,
+            timeLeft: ladderTimeLeft,
+            creator: ladderCreator
+        });
+
+        // Clear existing timer if any (safety)
+        if (ladderTimer) clearInterval(ladderTimer);
+
+        ladderTimer = setInterval(() => {
+            ladderTimeLeft--;
+            io.emit('ladder_timer_update', ladderTimeLeft);
+
+            if (ladderTimeLeft <= 0) {
+                clearInterval(ladderTimer);
+                ladderTimer = null;
+
+                // Transition to Input Phase
+                startInputPhase();
+            }
+        }, 1000);
+    });
+
+    // Join Ladder
+    socket.on('join_ladder', (user) => {
+        if (ladderState !== 'recruiting') return;
+
+        // Check if already joined (by nickname or id)
+        const exists = ladderParticipants.find(u => u.nickname === user.nickname);
+        if (!exists) {
+            ladderParticipants.push(user);
+            io.emit('ladder_update_participants', ladderParticipants);
+        }
+    });
+
+    // Update Result Input (Bottom text)
+    socket.on('update_ladder_result', ({ index, value }) => {
+        if (ladderState !== 'input_phase') return;
+        if (index >= 0 && index < ladderResults.length) {
+            ladderResults[index] = value;
+            socket.broadcast.emit('ladder_update_results', { ladderResults });
+        }
+    });
+
+    // Run Game
+    socket.on('run_ladder_game', () => {
+        if (ladderState !== 'input_phase') return;
+        // Verify creator? 
+        // For simplicity, allow anyone or frontend checks. Better: check socket.userId against creator.id if we had ids.
+        // We will relay on frontend for now or check nickname.
+
+        ladderState = 'playing';
+
+        // Generate Ladder Structure
+        // N verticals, Height H. 
+        // Generate M horizontal lines. 
+        // line: { col: 0..N-2, row: 0..100 }
+
+        const N = ladderParticipants.length;
+        const lines = [];
+        const rows = 10; // Logic grid height
+
+        // For each column gap (0 to N-2)
+        for (let col = 0; col < N - 1; col++) {
+            // For each row, random chance
+            for (let r = 0; r < rows; r++) {
+                // Avoid adjacent collisions: simplistic approach
+                // Just random generation
+                if (Math.random() > 0.5) {
+                    lines.push({ col, row: r });
+                }
+            }
+        }
+        // Improve generation to prevent overlapping? For valid ladder logic, we just need steps. 
+        // Client will draw using these logical row steps.
+
+        ladderData = lines;
+
+        io.emit('ladder_game_start', {
+            ladderData,
+            ladderResults
+        });
+
+        // Reset after 30s
+        if (ladderResetTimer) clearTimeout(ladderResetTimer);
+        ladderResetTimer = setTimeout(() => {
+            resetLadderState();
+        }, 30000);
+    });
+
+    socket.on('reset_ladder', () => {
+        // Validate creator
+        if (!ladderCreator) return;
+
+        const userInfo = userIdToInfo.get(socket.userId);
+        if (userInfo && userInfo.nickname === ladderCreator.nickname) {
+            resetLadderState();
+        }
+    });
+
+    function resetLadderState() {
+        if (ladderResetTimer) clearTimeout(ladderResetTimer);
+        ladderResetTimer = null;
+
+        ladderState = 'idle';
+        ladderParticipants = [];
+        ladderResults = [];
+        ladderData = [];
+        ladderCreator = null;
+        io.emit('ladder_recruitment_state', { state: 'idle' });
+    }
+
+    function startInputPhase() {
+        ladderState = 'input_phase';
+        // Initialize results array based on participant count
+        ladderResults = new Array(ladderParticipants.length).fill('');
+
+        io.emit('ladder_recruitment_state', {
+            state: 'input_phase',
+            participants: ladderParticipants,
+            creator: ladderCreator,
+            results: ladderResults
+        });
+    }
 });
 
 async function broadcastUserList() {

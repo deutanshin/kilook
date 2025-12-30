@@ -304,6 +304,107 @@ footer {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Dashboard Layout */
+.dashboard-container {
+    display: flex;
+    width: 100%;
+    max-width: 1200px;
+    height: 85vh;
+    background: var(--card-bg);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.sidebar {
+    width: 250px;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 10px;
+}
+
+.sidebar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    margin-bottom: 2rem;
+    text-align: center;
+    letter-spacing: 2px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: var(--accent-color);
+    color: #0f172a;
+}
+
+.content-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: var(--card-bg);
+}
+
+/* Dashboard Chat Overrides */
+.dashboard-container .chat-container {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    margin-top: 0;
+}
+
+.dashboard-container .chat-input-area {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* Dashboard Profile Area */
+.profile-area-dashboard {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.profile-mini {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile-mini img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-color);
+}
+
 .user-list-header {
     display: flex;
     justify-content: space-between;
