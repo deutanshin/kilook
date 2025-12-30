@@ -139,15 +139,21 @@ async function initDB() {
 }
 
 // ... (DB Connection Test - Keep existing) ...
-pool.getConnection((err, connection) => {
-    if (err) {
-        console.error('Error connecting to the database:', err);
-    } else {
-        console.log('Successfully connected to the MySQL database.');
-        initDB();
-        connection.release();
-    }
-});
+const waitForDB = () => {
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error connecting to the database:', err.code, err.message);
+            console.log('Retrying in 5 seconds...');
+            setTimeout(waitForDB, 5000);
+        } else {
+            console.log('Successfully connected to the MySQL database.');
+            initDB();
+            connection.release();
+        }
+    });
+};
+
+waitForDB();
 
 // ... (Middleware & Routes - Keep existing) ...
 const cookieParser = require('cookie-parser');
@@ -265,8 +271,12 @@ app.get('/api/auth/kakao/callback', async (req, res) => {
         res.redirect('/');
 
     } catch (error) {
-        console.error('Kakao Login Error:', error.response?.data || error.message);
-        res.status(500).send('Login failed');
+        console.error('Kakao Login Error:', error.message);
+        if (error.response) {
+            console.error('Kakao API Error Data:', error.response.data);
+            console.error('Used Redirect URI:', REDIRECT_URI);
+        }
+        res.status(500).json({ error: 'Login Failed', details: error.message });
     }
 });
 
