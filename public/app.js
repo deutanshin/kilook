@@ -460,6 +460,14 @@ function showLoggedInView(user) {
 
     // --- Logout ---
     document.getElementById('logoutBtn').addEventListener('click', async () => {
+        // Stop broadcasting or watching before logout
+        if (typeof stopScreenShare === 'function' && isBroadcasting) {
+            stopScreenShare();
+        }
+        if (typeof leaveAsViewer === 'function' && currentBroadcaster) {
+            leaveAsViewer();
+        }
+
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.reload();
     });
@@ -1277,6 +1285,7 @@ function showLoggedInView(user) {
     let viewers = new Set();
     let activeBroadcasts = new Map(); // Map of broadcasterId -> broadcast info
     let currentBroadcaster = null; // Current broadcast being watched
+    let isConnecting = false; // Flag to prevent double clicks
 
     // ICE Servers (STUN for NAT traversal)
     const iceServers = {
@@ -1374,6 +1383,8 @@ function showLoggedInView(user) {
     }
 
     function watchBroadcast(broadcast) {
+        if (isConnecting) return; // Prevent double clicks
+
         console.log('Watching broadcast:', broadcast);
 
         // Prevent re-joining same broadcast if already watching
@@ -1386,6 +1397,10 @@ function showLoggedInView(user) {
         if (currentBroadcaster) {
             leaveAsViewer();
         }
+
+        isConnecting = true;
+        // Auto-unlock after 5 seconds in case of failure/stuck
+        setTimeout(() => { isConnecting = false; }, 5000);
 
         // Save current broadcaster
         currentBroadcaster = {
@@ -1710,11 +1725,20 @@ function showLoggedInView(user) {
     socket.on('broadcast_answer', async ({ from, answer }) => {
         const pc = peerConnections[from];
         if (pc) {
+            // CRITICAL: Only set remote description if we are waiting for an answer
+            if (pc.signalingState !== 'have-local-offer') {
+                console.warn(`⚠️ Ignoring answer from ${from} because state is '${pc.signalingState}' (expected 'have-local-offer')`);
+                return;
+            }
+
             try {
                 await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                console.log(`✅ Remote description set for viewer ${from}`);
             } catch (error) {
-                console.error('Error setting remote description:', error);
+                console.error('❌ Error setting remote description:', error);
             }
+        } else {
+            console.warn(`⚠️ Received answer from ${from} but no peer connection found`);
         }
     });
 
@@ -1791,6 +1815,8 @@ function showLoggedInView(user) {
 
         // Handle incoming stream
         viewerPeerConnection.ontrack = async (event) => {
+            isConnecting = false; // ✅ Unlock immediately on success
+
             console.log('Received remote stream');
             const stream = event.streams[0];
             sharedScreen.srcObject = stream;

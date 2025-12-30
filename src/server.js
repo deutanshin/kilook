@@ -601,6 +601,22 @@ io.on('connection', (socket) => {
             // but for "Registered List" we want to keep them.
             broadcastUserList();
         }
+
+        // Check if disconnecting user was broadcasting
+        for (const [userId, broadcast] of activeBroadcasts.entries()) {
+            if (broadcast.socketId === socket.id) {
+                console.log(`Broadcaster ${broadcast.nickname} disconnected unexpectedly`);
+                activeBroadcasts.delete(userId);
+                io.emit('broadcast_stopped', { broadcasterId: userId });
+                io.emit('broadcast_list', {
+                    broadcasts: Array.from(activeBroadcasts.values())
+                });
+
+                // Also notify viewers to leave?
+                // The client handles broadcast_stopped by calling leaveAsViewer()
+                break;
+            }
+        }
     });
 
     // Request User List On-Demand
