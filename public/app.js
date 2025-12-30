@@ -1376,6 +1376,17 @@ function showLoggedInView(user) {
     function watchBroadcast(broadcast) {
         console.log('Watching broadcast:', broadcast);
 
+        // Prevent re-joining same broadcast if already watching
+        if (currentBroadcaster && currentBroadcaster.id === broadcast.userId) {
+            console.log("Already watching this broadcast, ignoring click.");
+            return;
+        }
+
+        // If watching someone else, leave first
+        if (currentBroadcaster) {
+            leaveAsViewer();
+        }
+
         // Save current broadcaster
         currentBroadcaster = {
             id: broadcast.userId,
@@ -1769,104 +1780,110 @@ function showLoggedInView(user) {
 
     // Receive offer from broadcaster
     socket.on('broadcast_offer', async ({ from, offer }) => {
-        if (!viewerPeerConnection) {
-            viewerPeerConnection = new RTCPeerConnection(iceServers);
+        // ALWAYS Reset connection on new offer to avoid stale state
+        if (viewerPeerConnection) {
+            console.warn('⚠️ Closing existing viewer connection for new offer');
+            viewerPeerConnection.close();
+            viewerPeerConnection = null;
+        }
 
-            // Handle incoming stream
-            viewerPeerConnection.ontrack = async (event) => {
-                console.log('Received remote stream');
-                const stream = event.streams[0];
-                sharedScreen.srcObject = stream;
-                noStreamPlaceholder.style.display = 'none';
+        viewerPeerConnection = new RTCPeerConnection(iceServers);
 
-                // Autoplay Policy Handling:
-                // 1. Start playback MUTED (allowed by browsers)
+        // Handle incoming stream
+        viewerPeerConnection.ontrack = async (event) => {
+            console.log('Received remote stream');
+            const stream = event.streams[0];
+            sharedScreen.srcObject = stream;
+            noStreamPlaceholder.style.display = 'none';
+
+            // Autoplay Policy Handling:
+            // 1. Start playback MUTED (allowed by browsers)
+            sharedScreen.muted = true;
+
+            try {
+                await sharedScreen.play();
+                console.log('✅ Video playing (muted)');
+
+                // 2. Once playing, try to UNMUTE
+                sharedScreen.muted = false;
+                console.log('✅ Audio unmuted successfully');
+            } catch (e) {
+                console.warn("⚠️ Autoplay with sound failed. Starting muted.", e);
+                // Fallback: Stay muted if unmuting fails, or keep trying to play
                 sharedScreen.muted = true;
-
                 try {
                     await sharedScreen.play();
-                    console.log('✅ Video playing (muted)');
-
-                    // 2. Once playing, try to UNMUTE
-                    sharedScreen.muted = false;
-                    console.log('✅ Audio unmuted successfully');
-                } catch (e) {
-                    console.warn("⚠️ Autoplay with sound failed. Starting muted.", e);
-                    // Fallback: Stay muted if unmuting fails, or keep trying to play
-                    sharedScreen.muted = true;
-                    try {
-                        await sharedScreen.play();
-                    } catch (e2) {
-                        console.error("❌ Muted autoplay also failed:", e2);
-                        shareStatus.textContent = '화면을 클릭하여 재생하세요 ▶';
-                        shareStatus.style.cursor = 'pointer';
-                        shareStatus.onclick = () => {
-                            sharedScreen.play();
-                            sharedScreen.muted = false;
-                        };
-                    }
+                } catch (e2) {
+                    console.error("❌ Muted autoplay also failed:", e2);
+                    shareStatus.textContent = '화면을 클릭하여 재생하세요 ▶';
+                    shareStatus.style.cursor = 'pointer';
+                    shareStatus.onclick = () => {
+                        sharedScreen.play();
+                        sharedScreen.muted = false;
+                    };
                 }
+            }
 
-                // Show fullscreen button
-                fullscreenBtn.style.display = 'flex';
+            // Show fullscreen button
+            fullscreenBtn.style.display = 'flex';
 
-                // Update specific UI elements
-                connectionInfo.style.display = 'block';
-                connState.textContent = '연결됨';
+            // Update specific UI elements
+            connectionInfo.style.display = 'block';
+            connState.textContent = '연결됨';
+            connState.style.color = '#22c55e';
+
+            // Update main status based on connection
+            if (currentBroadcaster) {
+                shareStatus.textContent = `${currentBroadcaster.name}님의 방송이 연결되었습니다!`;
+                shareStatus.style.color = '#22c55e'; // Green color for success
+
+                // Hide signal text after 3 seconds
+                setTimeout(() => {
+                    if (shareStatus.textContent.includes('연결되었습니다')) {
+                        shareStatus.textContent = '화면 + 오디오 공유 중!';
+                        shareStatus.classList.add('pulse');
+                    }
+                }, 3000);
+            }
+
+            // Update resolution info
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                const settings = videoTrack.getSettings();
+                if (settings.width && settings.height) {
+                    resolution.textContent = `${settings.width}x${settings.height}`;
+                } else {
+                    resolution.textContent = 'Auto';
+                }
+            }
+
+            const audioTrack = stream.getAudioTracks()[0];
+            audioState.textContent = audioTrack ? '활성' : '없음';
+            audioState.style.color = audioTrack ? '#22c55e' : '#f59e0b';
+        };
+
+        // ICE Candidate handling
+        viewerPeerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('ice_candidate', {
+                    target: from,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Connection state monitoring
+        viewerPeerConnection.onconnectionstatechange = () => {
+            console.log(`Connection state: ${viewerPeerConnection.connectionState}`);
+            connState.textContent = viewerPeerConnection.connectionState;
+
+            if (viewerPeerConnection.connectionState === 'connected') {
                 connState.style.color = '#22c55e';
+            } else if (viewerPeerConnection.connectionState === 'failed') {
+                connState.style.color = '#ef4444';
+            }
+        };
 
-                // Update main status based on connection
-                if (currentBroadcaster) {
-                    shareStatus.textContent = `${currentBroadcaster.name}님의 방송이 연결되었습니다!`;
-                    shareStatus.style.color = '#22c55e'; // Green color for success
-
-                    // Hide signal text after 3 seconds
-                    setTimeout(() => {
-                        if (shareStatus.textContent.includes('연결되었습니다')) {
-                            shareStatus.textContent = '화면 + 오디오 공유 중!';
-                            shareStatus.classList.add('pulse');
-                        }
-                    }, 3000);
-                }
-
-                // Update resolution info
-                const videoTrack = stream.getVideoTracks()[0];
-                if (videoTrack) {
-                    const settings = videoTrack.getSettings();
-                    if (settings.width && settings.height) {
-                        resolution.textContent = `${settings.width}x${settings.height}`;
-                    } else {
-                        resolution.textContent = 'Auto';
-                    }
-                }
-
-                const audioTrack = stream.getAudioTracks()[0];
-                audioState.textContent = audioTrack ? '활성' : '없음';
-                audioState.style.color = audioTrack ? '#22c55e' : '#f59e0b';
-            };
-
-            // ICE Candidate handling
-            viewerPeerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice_candidate', {
-                        target: from,
-                        candidate: event.candidate
-                    });
-                }
-            };
-
-            // Connection state monitoring
-            viewerPeerConnection.onconnectionstatechange = () => {
-                console.log(`Connection state: ${viewerPeerConnection.connectionState}`);
-                connState.textContent = viewerPeerConnection.connectionState;
-
-                if (viewerPeerConnection.connectionState === 'connected') {
-                    connState.style.color = '#22c55e';
-                } else if (viewerPeerConnection.connectionState === 'failed') {
-                    connState.style.color = '#ef4444';
-                }
-            };
-        }
 
         try {
             await viewerPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
