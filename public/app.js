@@ -1287,13 +1287,36 @@ function showLoggedInView(user) {
     let currentBroadcaster = null; // Current broadcast being watched
     let isConnecting = false; // Flag to prevent double clicks
 
-    // ICE Servers (STUN for NAT traversal)
+    // ICE Servers (STUN/TURN for NAT traversal)
     const iceServers = {
         iceServers: [
+            // Google STUN Servers
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
-        ]
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+
+            // Open Relay Project (Free TURN for testing)
+            // 주의: 테스트용 무료 서버이므로 속도가 느리거나 언제든 중단될 수 있습니다.
+            // 안정적인 서비스를 위해서는 Metered.ca나 Twilio 같은 유료 TURN을 권장합니다.
+            {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            }
+        ],
+        iceCandidatePoolSize: 10, // 미리 연결 후보를 준비하여 속도 향상
     };
 
     // ===================================
